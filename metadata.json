@@ -1,0 +1,6 @@
+{
+  "name": "Echo-Guard: Intelligent Sonar Classification",
+  "description": "Intelligent sonar signal classification platform for rock and naval mine prediction using machine learning.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
