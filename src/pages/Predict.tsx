@@ -129,7 +129,7 @@ export function Predict() {
         <div className="flex items-center gap-2 text-xs font-medium text-slate-300 bg-black/40 px-3.5 py-1.5 rounded-full border border-white/10">
           <Server size={14} className="text-green-400" />
           <span>Flask API:</span>
-          <span className="text-green-400 font-mono">http://127.0.0.1:5000/predict</span>
+          <span className="text-green-400 font-mono text-[11px]">https://echo-guard-api.onrender.com/predict</span>
         </div>
       </div>
 
@@ -150,9 +150,9 @@ export function Predict() {
               <p className="text-xs text-red-200/90 leading-relaxed font-sans">{apiError}</p>
               <div className="mt-3 text-[11px] text-slate-300 bg-black/60 p-3 rounded-xl border border-white/10 space-y-1.5 font-mono">
                 <p className="text-green-400 font-bold">Troubleshooting steps:</p>
-                <p>1. Start your Python Flask backend: <span className="text-white bg-white/10 px-1 py-0.5 rounded">python app.py</span></p>
-                <p>2. Verify endpoint is listening on: <span className="text-cyan-300">POST http://127.0.0.1:5000/predict</span></p>
-                <p>3. Ensure CORS is enabled in Flask: <span className="text-yellow-300 bg-black/40 px-1 py-0.5 rounded">pip install flask-cors</span> then <span className="text-yellow-300 bg-black/40 px-1 py-0.5 rounded">CORS(app)</span></p>
+                <p>1. Check backend status at: <span className="text-white bg-white/10 px-1 py-0.5 rounded break-all">https://echo-guard-api.onrender.com/health</span></p>
+                <p>2. Verify endpoint is listening on: <span className="text-cyan-300 break-all">POST https://echo-guard-api.onrender.com/predict</span></p>
+                <p>3. Note: Render free tier services may take 30-50s to wake up if dormant.</p>
               </div>
             </div>
           </div>

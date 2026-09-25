@@ -1,5 +1,5 @@
 // Sonar Rock and Mine ML Classification
-// Connects to Flask backend API running scikit-learn models at http://127.0.0.1:5000/predict
+// Connects to Flask backend API running scikit-learn models at https://echo-guard-api.onrender.com/predict
 
 export type DataPoint = number[];
 export type Label = 'R' | 'M';
@@ -25,7 +25,7 @@ export interface FlaskPredictResponse {
   error?: string;
 }
 
-export const FLASK_API_BASE = 'http://127.0.0.1:5000';
+export const FLASK_API_BASE = 'https://echo-guard-api.onrender.com';
 export const FLASK_PREDICT_URL = `${FLASK_API_BASE}/predict`;
 
 /**
@@ -108,7 +108,7 @@ export async function predictWithFlaskAPI(
     // Handle network / CORS / connection errors
     if (err.name === 'TypeError' || err.message?.toLowerCase().includes('fetch')) {
       throw new Error(
-        `Unable to reach Flask API at ${FLASK_API_BASE}. Please ensure your Python Flask backend is running on port 5000 and that CORS is enabled (e.g., \`from flask_cors import CORS; CORS(app)\`).`
+        `Unable to reach Flask API at ${FLASK_API_BASE}. Please ensure your deployed backend service is active (https://echo-guard-api.onrender.com) and that CORS is enabled.`
       );
     }
     throw err;

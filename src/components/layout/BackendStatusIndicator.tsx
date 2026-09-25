@@ -22,7 +22,7 @@ export function BackendStatusIndicator({ className = '', compact = false }: Back
     setIsRefreshing(true);
     const healthUrl = `${FLASK_API_BASE}/health`;
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3500);
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
     const startTime = performance.now();
 
     try {
@@ -51,9 +51,9 @@ export function BackendStatusIndicator({ className = '', compact = false }: Back
       setStatus('disconnected');
       setLatency(null);
       if (err.name === 'AbortError') {
-        setErrorMessage('Connection timed out (> 3.5s)');
+        setErrorMessage('Connection timed out (> 8s)');
       } else {
-        setErrorMessage('Cannot reach http://127.0.0.1:5000');
+        setErrorMessage(`Cannot reach ${FLASK_API_BASE}`);
       }
     } finally {
       setLastChecked(new Date());
@@ -163,8 +163,8 @@ export function BackendStatusIndicator({ className = '', compact = false }: Back
             {/* Endpoint */}
             <div className="flex items-center justify-between text-slate-400">
               <span>Endpoint:</span>
-              <code className="text-[11px] text-cyan-300 bg-cyan-950/40 px-1.5 py-0.5 rounded border border-cyan-800/40">
-                http://127.0.0.1:5000/health
+              <code className="text-[11px] text-cyan-300 bg-cyan-950/40 px-1.5 py-0.5 rounded border border-cyan-800/40 break-all">
+                https://echo-guard-api.onrender.com/health
               </code>
             </div>
 
@@ -221,10 +221,10 @@ export function BackendStatusIndicator({ className = '', compact = false }: Back
                   <WifiOff className="w-3 h-3 text-rose-400" /> Server Unreachable
                 </p>
                 <p className="text-rose-300/80">
-                  Ensure your Python Flask server is running locally on port 5000 with CORS allowed:
+                  Ensure your deployed Render backend service is awake and active:
                 </p>
-                <code className="block mt-1 p-1 bg-black/40 rounded text-[10px] text-rose-200">
-                  python app.py
+                <code className="block mt-1 p-1 bg-black/40 rounded text-[10px] text-rose-200 break-all">
+                  https://echo-guard-api.onrender.com/health
                 </code>
               </div>
             )}
