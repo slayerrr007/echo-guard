@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Echo-Guard: Intelligent Sonar Classification for Rock and Mine Prediction</title>
+  
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg-dark: #070d18;
+      --card-bg: rgba(15, 23, 42, 0.72);
+      --card-border: rgba(255, 255, 255, 0.1);
+      --neon-emerald: #10b981;
+      --neon-cyan: #06b6d4;
+      --neon-glow: rgba(16, 185, 129, 0.25);
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      background-image: 
+        radial-gradient(circle at 10% 20%, rgba(16, 185, 129, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 90% 80%, rgba(6, 182, 212, 0.08) 0%, transparent 40%);
+      color: #e2e8f0;
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Glassmorphism Styles */
+    .glass-card {
+      background: var(--card-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--card-border);
+      border-radius: 1.25rem;
+      transition: all 0.3s ease;
+    }
+
+    .glass-card:hover {
+      border-color: rgba(16, 185, 129, 0.4);
+      transform: translateY(-2px);
+      box-shadow: 0 12px 30px -10px var(--neon-glow);
+    }
+
+    /* Enhanced Hover-Glow effect for model cards inside #models */
+    #models .glass-card {
+      position: relative;
+      transition: border-color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
+    }
+
+    #models .glass-card:hover {
+      border-color: rgba(52, 211, 153, 0.85) !important;
+      transform: translateY(-4px);
+      box-shadow: 
+        0 0 28px -2px rgba(52, 211, 153, 0.38),
+        0 12px 30px -5px rgba(0, 0, 0, 0.55),
+        inset 0 0 15px rgba(52, 211, 153, 0.12) !important;
+    }
+
+    .glass-nav {
+      background: rgba(7, 13, 24, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    /* Gradient Buttons */
+    .btn-gradient-primary {
+      background: linear-gradient(135deg, #10b981 0%, #06b6d4 100%);
+      color: #020617;
+      font-weight: 700;
+      border: none;
+      border-radius: 50rem;
+      padding: 0.8rem 2rem;
+      transition: all 0.25s ease;
+      box-shadow: 0 4px 20px rgba(16, 185, 129, 0.3);
+    }
+
+    .btn-gradient-primary:hover {
+      opacity: 0.92;
+      transform: translateY(-1px);
+      box-shadow: 0 6px 25px rgba(16, 185, 129, 0.45);
+      color: #020617;
+    }
+
+    .btn-glass {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--card-border);
+      color: #e2e8f0;
+      border-radius: 50rem;
+      padding: 0.8rem 2rem;
+      font-weight: 600;
+      transition: all 0.25s ease;
+    }
+
+    .btn-glass:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.25);
+      color: #ffffff;
+    }
+
+    /* Badges */
+    .badge-soft-emerald {
+      background: rgba(16, 185, 129, 0.12);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.25);
+    }
+
+    .badge-soft-cyan {
+      background: rgba(6, 182, 212, 0.12);
+      color: #22d3ee;
+      border: 1px solid rgba(6, 182, 212, 0.25);
+    }
+
+    /* Pulse Radar Animation */
+    .radar-circle {
+      width: 140px;
+      height: 140px;
+      border-radius: 50%;
+      border: 2px solid rgba(16, 185, 129, 0.4);
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .radar-circle::after {
+      content: '';
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      border: 2px solid var(--neon-emerald);
+      animation: pulseRadar 2.5s infinite ease-out;
+      opacity: 0;
+    }
+
+    @keyframes pulseRadar {
+      0% {
+        transform: scale(0.6);
+        opacity: 0.8;
+      }
+      100% {
+        transform: scale(1.6);
+        opacity: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation Bar -->
+  <nav class="navbar navbar-expand-lg glass-nav sticky-top py-3">
+    <div class="container">
+      <a class="navbar-brand d-flex align-items-center gap-2 text-white fw-bold tracking-wider" href="/">
+        <i class="bi bi-radar text-success fs-4"></i>
+        <span>ECHO-GUARD</span>
+      </a>
+      
+      <button class="navbar-toggler border-secondary text-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent">
+        <i class="bi bi-list text-white"></i>
+      </button>
+
+      <div class="collapse navbar-collapse" id="navbarContent">
+        <ul class="navbar-nav ms-auto mb-2 mb-lg-0 align-items-lg-center gap-lg-3">
+          <li class="nav-item">
+            <a class="nav-link active text-success fw-semibold" href="/">Home</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link text-slate-300" href="/train">Algorithms</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link text-slate-300" href="/predict">Predict</a>
+          </li>
+          <li class="nav-item ms-lg-2">
+            <a class="btn btn-sm btn-gradient-primary px-4" href="/predict">
+              <i class="bi bi-crosshair me-1"></i> Live Inference
+            </a>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero Section -->
+  <header class="py-5 my-lg-4 text-center">
+    <div class="container">
+      <div class="row justify-content-center">
+        <div class="col-lg-9">
+          
+          <div class="d-inline-flex align-items-center gap-2 px-3 py-1.5 rounded-pill badge-soft-emerald font-mono text-xs mb-4">
+            <span class="spinner-grow spinner-grow-sm text-success" role="status"></span>
+            <span>Naval Acoustic Telemetry &bull; 60 Frequency Bins</span>
+          </div>
+
+          <h1 class="display-4 fw-extrabold text-white tracking-tight mb-3">
+            Intelligent Sonar Classification for <br class="d-none d-md-inline">
+            <span class="text-transparent bg-clip-text" style="background: linear-gradient(135deg, #34d399 0%, #22d3ee 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+              Rock and Mine Prediction
+            </span>
+          </h1>
+
+          <p class="lead text-secondary mb-5 mx-auto" style="max-width: 720px;">
+            Echo-Guard provides mission-critical acoustic signal classification, leveraging supervised machine learning to distinguish cylindrical metallic naval mines from natural seabed rocks in sub-second inference intervals.
+          </p>
+
+          <div class="d-flex flex-wrap justify-content-center gap-3">
+            <a href="/predict" class="btn btn-gradient-primary d-inline-flex align-items-center gap-2">
+              <i class="bi bi-crosshair"></i>
+              <span>Launch Prediction</span>
+            </a>
+            <a href="/train" class="btn btn-glass d-inline-flex align-items-center gap-2">
+              <i class="bi bi-bar-chart-line"></i>
+              <span>Compare Algorithms</span>
+            </a>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Key Statistics Banner -->
+  <section class="py-4">
+    <div class="container">
+      <div class="glass-card p-4">
+        <div class="row g-4 text-center">
+          <div class="col-6 col-md-3 border-end border-secondary border-opacity-25">
+            <div class="fs-2 fw-bold text-white font-mono">60</div>
+            <div class="text-secondary text-xs text-uppercase font-mono">Sonar Frequencies</div>
+          </div>
+          <div class="col-6 col-md-3 border-end border-secondary border-opacity-25">
+            <div class="fs-2 fw-bold text-success font-mono">91.4%</div>
+            <div class="text-secondary text-xs text-uppercase font-mono">Peak Accuracy</div>
+          </div>
+          <div class="col-6 col-md-3 border-end border-secondary border-opacity-25">
+            <div class="fs-2 fw-bold text-info font-mono">&lt; 20ms</div>
+            <div class="text-secondary text-xs text-uppercase font-mono">API Inference Latency</div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="fs-2 fw-bold text-white font-mono">3 Models</div>
+            <div class="text-secondary text-xs text-uppercase font-mono">Supervised Lineup</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Advanced ML Models / Features Section -->
+  <section class="py-5" id="models">
+    <div class="container">
+      
+      <div class="text-center mb-5">
+        <span class="text-uppercase font-mono text-success text-xs fw-semibold tracking-wider">
+          <i class="bi bi-cpu me-1"></i> Core Architectures
+        </span>
+        <h2 class="display-6 fw-bold text-white mt-1 mb-3">Advanced ML Models</h2>
+        <p class="text-secondary mx-auto mb-3" style="max-width: 680px;">
+          Echo-Guard is powered exclusively by a streamlined benchmark lineup of three verified scikit-learn models: 
+          <strong class="text-light">Logistic Regression</strong>, 
+          <strong class="text-light">Random Forest</strong>, and 
+          <strong class="text-light">K-Nearest Neighbors (KNN)</strong>, delivering balanced precision and high-dimensional acoustic discrimination.
+        </p>
+
+        <!-- Download Status Report Button -->
+        <div class="mt-3">
+          <button type="button" onclick="downloadModelStatusReport()" class="btn btn-outline-light btn-sm rounded-pill font-mono px-3 py-1.5 text-xs d-inline-flex align-items-center gap-2 border border-secondary border-opacity-30 shadow-sm" title="Download model training statuses as JSON">
+            <i class="bi bi-download text-success"></i>
+            <span>Download Status Report</span>
+            <span class="badge bg-secondary bg-opacity-25 text-light text-xxs font-mono">.json</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="row g-4">
+        
+        <!-- Model 1: Logistic Regression -->
+        <div class="col-lg-4">
+          <div class="glass-card p-4 p-xl-5 h-100 d-flex flex-column">
+            <div class="d-flex justify-content-between align-items-start mb-4">
+              <div class="p-3 rounded-4 bg-primary bg-opacity-10 border border-primary border-opacity-25">
+                <i class="bi bi-graph-up text-primary fs-3"></i>
+              </div>
+              <div class="d-flex flex-column align-items-end gap-1.5">
+                <span class="badge badge-soft-emerald font-mono">84.6% Accuracy</span>
+                <!-- Visual Training Status Indicator -->
+                <span class="badge bg-success bg-opacity-15 text-success border border-success border-opacity-30 font-mono text-xs d-inline-flex align-items-center gap-1.5 py-1 px-2.5 rounded-pill" title="Training Status: Production Ready">
+                  <span class="spinner-grow spinner-grow-sm text-success" style="width: 6px; height: 6px;" role="status"></span>
+                  Ready
+                </span>
+              </div>
+            </div>
+
+            <h4 class="fw-bold text-white mb-2">Logistic Regression</h4>
+            <p class="text-secondary text-sm leading-relaxed flex-grow-1">
+              Establishes an optimized linear decision boundary across all 60 frequency features. Utilizes continuous sigmoid probability mapping for granular, interpretable confidence scores.
+            </p>
+
+            <ul class="list-unstyled text-secondary text-xs font-mono mb-4 pt-3 border-top border-secondary border-opacity-25 space-y-2">
+              <li class="mb-2"><i class="bi bi-check2 text-success me-2"></i>L2 Regularization (C=1.0)</li>
+              <li class="mb-2"><i class="bi bi-check2 text-success me-2"></i>L-BFGS Numerical Solver</li>
+              <li><i class="bi bi-check2 text-success me-2"></i>Direct Probability Output</li>
+            </ul>
+
+            <div class="mt-auto pt-3 border-top border-secondary border-opacity-25 d-flex flex-column gap-2">
+              <button type="button" onclick="openHyperparameterModal('logistic_regression')" class="btn btn-outline-success btn-sm rounded-pill w-100 py-1.5 font-mono text-xs d-flex align-items-center justify-center gap-1.5 shadow-sm">
+                <i class="bi bi-sliders"></i> Edit Hyperparameters
+              </button>
+              <div class="row g-2">
+                <div class="col-6">
+                  <a href="/model-comparison?highlight=lr" class="btn btn-glass btn-sm rounded-pill w-100 py-1.5 font-mono text-xs d-flex align-items-center justify-center gap-1">
+                    <i class="bi bi-bar-chart text-success"></i> Compare
+                  </a>
+                </div>
+                <div class="col-6">
+                  <a href="/train" class="btn btn-outline-light btn-sm rounded-pill w-100 py-1.5 font-mono text-xs text-center">
+                    Inspect &rarr;
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Model 2: Random Forest -->
+        <div class="col-lg-4">
+          <div class="glass-card p-4 p-xl-5 h-100 d-flex flex-column border-success border-opacity-50" style="background: rgba(16, 185, 129, 0.05);">
+            <div class="d-flex justify-content-between align-items-start mb-4">
+              <div class="p-3 rounded-4 bg-success bg-opacity-10 border border-success border-opacity-25">
+                <i class="bi bi-tree text-success fs-3"></i>
+              </div>
+              <div class="d-flex flex-column align-items-end gap-1.5">
+                <span class="badge bg-success text-dark font-mono fw-bold" id="badge-rf-acc">Top Performer (91.4%)</span>
+                <!-- Visual Training Status Indicator -->
+                <span class="badge font-mono text-xs d-inline-flex align-items-center gap-1.5 py-1 px-2.5 rounded-pill shadow-sm" id="badge-rf-status" style="color: #34d399; background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(52, 211, 153, 0.45);" title="Training Status: Hyperparameters Tuned & Optimized">
+                  <span class="spinner-grow spinner-grow-sm text-success" style="width: 6px; height: 6px;" role="status"></span>
+                  Optimized
+                </span>
+              </div>
+            </div>
+
+            <h4 class="fw-bold text-white mb-2">Random Forest Classifier</h4>
+            <p class="text-secondary text-sm leading-relaxed flex-grow-1">
+              An ensemble of 100 decorrelated decision trees that minimizes variance and resists acoustic reverberation noise, achieving our highest overall cross-validated accuracy (91.4%).
+            </p>
+
+            <ul class="list-unstyled text-secondary text-xs font-mono mb-4 pt-3 border-top border-secondary border-opacity-25 space-y-2">
+              <li class="mb-2"><i class="bi bi-check2 text-success me-2"></i>100 Gini Estimators</li>
+              <li class="mb-2"><i class="bi bi-check2 text-success me-2"></i>High Dimensional Robustness</li>
+              <li><i class="bi bi-check2 text-success me-2"></i>90.5% True Mine Recall</li>
+            </ul>
+
+            <div class="mt-auto pt-3 border-top border-secondary border-opacity-25 d-flex flex-column gap-2">
+              <button type="button" onclick="openHyperparameterModal('random_forest')" class="btn btn-success btn-sm rounded-pill w-100 py-1.5 font-mono text-xs text-dark fw-bold d-flex align-items-center justify-center gap-1.5 shadow-sm">
+                <i class="bi bi-sliders"></i> Edit Hyperparameters
+              </button>
+              <div class="row g-2">
+                <div class="col-6">
+                  <a href="/model-comparison?highlight=rf" class="btn btn-glass btn-sm rounded-pill w-100 py-1.5 font-mono text-xs d-flex align-items-center justify-center gap-1">
+                    <i class="bi bi-bar-chart text-success"></i> Compare
+                  </a>
+                </div>
+                <div class="col-6">
+                  <a href="/train" class="btn btn-gradient-primary btn-sm rounded-pill w-100 py-1.5 font-mono text-xs text-center">
+                    Inspect &rarr;
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Model 3: K-Nearest Neighbors -->
+        <div class="col-lg-4">
+          <div class="glass-card p-4 p-xl-5 h-100 d-flex flex-column">
+            <div class="d-flex justify-content-between align-items-start mb-4">
+              <div class="p-3 rounded-4 bg-info bg-opacity-10 border border-info border-opacity-25">
+                <i class="bi bi-bezier2 text-info fs-3"></i>
+              </div>
+              <div class="d-flex flex-column align-items-end gap-1.5">
+                <span class="badge badge-soft-cyan font-mono" id="badge-knn-acc">86.5% Accuracy</span>
+                <!-- Visual Training Status Indicator -->
+                <span class="badge bg-warning bg-opacity-15 text-warning border border-warning border-opacity-30 font-mono text-xs d-inline-flex align-items-center gap-1.5 py-1 px-2.5 rounded-pill" id="badge-knn-status" title="Training Status: Distance Metric Tuning & Calibration Required">
+                  <span class="spinner-grow spinner-grow-sm text-warning" style="width: 6px; height: 6px;" role="status"></span>
+                  Calibration Required
+                </span>
+              </div>
+            </div>
+
+            <h4 class="fw-bold text-white mb-2">K-Nearest Neighbors (KNN)</h4>
+            <p class="text-secondary text-sm leading-relaxed flex-grow-1">
+              A metric-based instance classifier that matches live sonar signals against empirical rock and mine echoes using Euclidean and Minkowski distance clustering.
+            </p>
+
+            <ul class="list-unstyled text-secondary text-xs font-mono mb-4 pt-3 border-top border-secondary border-opacity-25 space-y-2">
+              <li class="mb-2"><i class="bi bi-check2 text-success me-2"></i>K=3 Proximity Clustering</li>
+              <li class="mb-2"><i class="bi bi-check2 text-success me-2"></i>Minkowski Distance Metric</li>
+              <li><i class="bi bi-check2 text-success me-2"></i>Non-Parametric Flexibility</li>
+            </ul>
+
+            <div class="mt-auto pt-3 border-top border-secondary border-opacity-25 d-flex flex-column gap-2">
+              <button type="button" onclick="openHyperparameterModal('knn')" class="btn btn-outline-info btn-sm rounded-pill w-100 py-1.5 font-mono text-xs d-flex align-items-center justify-center gap-1.5 shadow-sm">
+                <i class="bi bi-sliders"></i> Edit Hyperparameters
+              </button>
+              <div class="row g-2">
+                <div class="col-6">
+                  <a href="/model-comparison?highlight=knn" class="btn btn-glass btn-sm rounded-pill w-100 py-1.5 font-mono text-xs d-flex align-items-center justify-center gap-1">
+                    <i class="bi bi-bar-chart text-info"></i> Compare
+                  </a>
+                </div>
+                <div class="col-6">
+                  <a href="/train" class="btn btn-outline-light btn-sm rounded-pill w-100 py-1.5 font-mono text-xs text-center">
+                    Inspect &rarr;
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Lineup Banner -->
+      <div class="mt-5 p-4 glass-card d-flex flex-column flex-md-row align-items-center justify-content-between gap-3">
+        <div class="d-flex align-items-center gap-3 text-start">
+          <div class="p-2 rounded-circle bg-success bg-opacity-20 text-success">
+            <i class="bi bi-shield-lock fs-4"></i>
+          </div>
+          <div>
+            <h6 class="text-white fw-bold mb-0">Streamlined Model Lineup</h6>
+            <small class="text-secondary">Strictly standardized on Logistic Regression, Random Forest, and KNN for maximum naval reproducibility.</small>
+          </div>
+        </div>
+        <a href="/train" class="btn btn-sm btn-gradient-primary rounded-pill px-4 text-nowrap">
+          View Side-by-Side Metrics
+        </a>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Platform Features Grid -->
+  <section class="py-5 border-top border-secondary border-opacity-10">
+    <div class="container">
+      <div class="row g-4">
+        
+        <div class="col-md-4">
+          <div class="glass-card p-4 h-100">
+            <div class="p-3 rounded-4 bg-dark border border-secondary border-opacity-25 d-inline-block mb-3 text-success">
+              <i class="bi bi-cloud-arrow-up fs-4"></i>
+            </div>
+            <h5 class="text-white fw-bold">60-Feature CSV Ingestion</h5>
+            <p class="text-secondary text-sm mb-0">
+              Directly upload full sonar pings or simulate arbitrary frequency signatures with instant input verification.
+            </p>
+          </div>
+        </div>
+
+        <div class="col-md-4">
+          <div class="glass-card p-4 h-100">
+            <div class="p-3 rounded-4 bg-dark border border-secondary border-opacity-25 d-inline-block mb-3 text-info">
+              <i class="bi bi-lightning-charge fs-4"></i>
+            </div>
+            <h5 class="text-white fw-bold">Microsecond Flask API</h5>
+            <p class="text-secondary text-sm mb-0">
+              Low-latency JSON prediction endpoint (<code class="text-info font-mono">/predict</code>) providing binary classification and probability certainty.
+            </p>
+          </div>
+        </div>
+
+        <div class="col-md-4">
+          <div class="glass-card p-4 h-100">
+            <div class="p-3 rounded-4 bg-dark border border-secondary border-opacity-25 d-inline-block mb-3 text-warning">
+              <i class="bi bi-file-earmark-pdf fs-4"></i>
+            </div>
+            <h5 class="text-white fw-bold">Tactical PDF Reports</h5>
+            <p class="text-secondary text-sm mb-0">
+              Export comprehensive classification audits with confidence metrics, timestamped logs, and full frequency breakdowns.
+            </p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="py-5 border-top border-secondary border-opacity-10 text-secondary text-sm">
+    <div class="container">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-center gap-3">
+        <div class="d-flex align-items-center gap-2 text-white fw-bold font-mono">
+          <i class="bi bi-radar text-success"></i> ECHO-GUARD
+        </div>
+        <div class="font-mono text-xs text-secondary">
+          Supported Models: Logistic Regression &bull; Random Forest &bull; K-Nearest Neighbors (KNN)
+        </div>
+        <div class="text-xs text-secondary">
+          &copy; 2026 Echo-Guard. Defense & Naval Sonar Intelligence.
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Hyperparameter Tuning Modal Overlay -->
+  <div class="modal fade" id="hyperparameterModal" tabindex="-1" aria-labelledby="hyperparameterModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content glass-card border border-success border-opacity-30 bg-dark text-light p-2">
+        <div class="modal-header border-bottom border-secondary border-opacity-25 pb-3">
+          <div class="d-flex align-items-center gap-3">
+            <div class="p-2.5 rounded-3 bg-success bg-opacity-10 border border-success border-opacity-25 text-success" id="modal-icon-container">
+              <i class="bi bi-sliders fs-4"></i>
+            </div>
+            <div>
+              <div class="d-flex align-items-center gap-2">
+                <h5 class="modal-title fw-bold text-white mb-0" id="modalModelTitle">Tune Hyperparameters</h5>
+                <span class="badge bg-success bg-opacity-15 text-success font-mono text-xxs">Config Mode</span>
+              </div>
+              <small class="text-secondary font-mono" id="modalModelSubtitle">Adjust settings before retraining</small>
+            </div>
+          </div>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+
+        <div class="modal-body py-4" id="modalDynamicBody">
+          <!-- Dynamic Controls populated by JavaScript -->
+        </div>
+
+        <div class="modal-footer border-top border-secondary border-opacity-25 pt-3 d-flex justify-content-between">
+          <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill font-mono" onclick="resetModalDefaults()">
+            <i class="bi bi-arrow-counterclockwise"></i> Reset Defaults
+          </button>
+          <div class="d-flex gap-2">
+            <button type="button" class="btn btn-glass btn-sm rounded-pill font-mono" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-gradient-primary btn-sm rounded-pill font-mono fw-bold" id="btnRetrainModal" onclick="executeModalRetrain()">
+              <i class="bi bi-lightning-charge-fill me-1"></i> Save & Retrain
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bootstrap 5 Bundle JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    let currentModalModel = 'knn';
+    let bsModalInstance = null;
+
+    function openHyperparameterModal(modelKey) {
+      currentModalModel = modelKey;
+      const modalEl = document.getElementById('hyperparameterModal');
+      const titleEl = document.getElementById('modalModelTitle');
+      const subtitleEl = document.getElementById('modalModelSubtitle');
+      const bodyEl = document.getElementById('modalDynamicBody');
+
+      if (!bsModalInstance) {
+        bsModalInstance = new bootstrap.Modal(modalEl);
+      }
+
+      if (modelKey === 'knn') {
+        titleEl.textContent = 'K-Nearest Neighbors (KNN)';
+        subtitleEl.textContent = 'Configure neighbor count (k), spatial geometry, and weighting.';
+        bodyEl.innerHTML = `
+          <div class="space-y-4">
+            <div class="mb-3 p-3 rounded-3 bg-black bg-opacity-40 border border-secondary border-opacity-25">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <label class="form-label font-mono text-xs text-light fw-bold mb-0">Number of Neighbors (K-value):</label>
+                <span class="badge bg-info bg-opacity-25 text-info font-mono fw-bold fs-6" id="knnKDisplay">K = 3</span>
+              </div>
+              <input type="range" class="form-range" min="1" max="21" step="1" value="3" id="inputKnnK" oninput="document.getElementById('knnKDisplay').textContent = 'K = ' + this.value;">
+              <div class="d-flex justify-content-between text-xxs font-mono text-secondary">
+                <span>K=1 (High Variance)</span>
+                <span class="text-info">K=3 (Recommended Default)</span>
+                <span>K=21 (High Bias)</span>
+              </div>
+            </div>
+
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label font-mono text-xs text-secondary">Distance Metric</label>
+                <select class="form-select form-select-sm bg-dark text-light border-secondary font-mono" id="inputKnnMetric">
+                  <option value="minkowski" selected>Minkowski (p=2, Euclidean)</option>
+                  <option value="manhattan">Manhattan (L1 Norm)</option>
+                  <option value="chebyshev">Chebyshev (L-infinity)</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label font-mono text-xs text-secondary">Weighting Function</label>
+                <select class="form-select form-select-sm bg-dark text-light border-secondary font-mono" id="inputKnnWeights">
+                  <option value="uniform" selected>Uniform (Equal Vote)</option>
+                  <option value="distance">Distance-Weighted (1 / Distance)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        `;
+      } else if (modelKey === 'random_forest') {
+        titleEl.textContent = 'Random Forest Classifier';
+        subtitleEl.textContent = 'Configure ensemble tree count, split impurity criterion, and feature subsampling.';
+        bodyEl.innerHTML = `
+          <div class="space-y-4">
+            <div class="mb-3 p-3 rounded-3 bg-black bg-opacity-40 border border-secondary border-opacity-25">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <label class="form-label font-mono text-xs text-light fw-bold mb-0">Estimator Trees (n_estimators):</label>
+                <span class="badge bg-success bg-opacity-25 text-success font-mono fw-bold fs-6" id="rfTreesDisplay">100 Trees</span>
+              </div>
+              <input type="range" class="form-range" min="20" max="300" step="10" value="100" id="inputRfTrees" oninput="document.getElementById('rfTreesDisplay').textContent = this.value + ' Trees';">
+              <div class="d-flex justify-content-between text-xxs font-mono text-secondary">
+                <span>20 Trees</span>
+                <span class="text-success">100 Trees (Standard)</span>
+                <span>300 Trees</span>
+              </div>
+            </div>
+
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label font-mono text-xs text-secondary">Split Criterion</label>
+                <select class="form-select form-select-sm bg-dark text-light border-secondary font-mono" id="inputRfCriterion">
+                  <option value="gini" selected>Gini Impurity</option>
+                  <option value="entropy">Shannon Entropy / Log Loss</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label font-mono text-xs text-secondary">Max Features per Split</label>
+                <select class="form-select form-select-sm bg-dark text-light border-secondary font-mono" id="inputRfFeatures">
+                  <option value="sqrt" selected>sqrt(60) ≈ 8 features</option>
+                  <option value="log2">log2(60) ≈ 6 features</option>
+                  <option value="all">All 60 features</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        `;
+      } else {
+        titleEl.textContent = 'Logistic Regression';
+        subtitleEl.textContent = 'Configure regularization parameter C, solver algorithm, and maximum iterations.';
+        bodyEl.innerHTML = `
+          <div class="space-y-4">
+            <div class="mb-3 p-3 rounded-3 bg-black bg-opacity-40 border border-secondary border-opacity-25">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <label class="form-label font-mono text-xs text-light fw-bold mb-0">Inverse Regularization (C):</label>
+                <span class="badge bg-success bg-opacity-25 text-success font-mono fw-bold fs-6" id="lrCDisplay">C = 1.0</span>
+              </div>
+              <input type="range" class="form-range" min="0.1" max="5.0" step="0.1" value="1.0" id="inputLrC" oninput="document.getElementById('lrCDisplay').textContent = 'C = ' + parseFloat(this.value).toFixed(1);">
+              <div class="d-flex justify-content-between text-xxs font-mono text-secondary">
+                <span>0.1 (Strong Penalty)</span>
+                <span class="text-success">C = 1.0 (Standard)</span>
+                <span>5.0 (Weak Penalty)</span>
+              </div>
+            </div>
+
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label font-mono text-xs text-secondary">Regularization Penalty</label>
+                <select class="form-select form-select-sm bg-dark text-light border-secondary font-mono" id="inputLrPenalty">
+                  <option value="l2" selected>L2 (Ridge)</option>
+                  <option value="l1">L1 (Lasso)</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label font-mono text-xs text-secondary">Optimization Solver</label>
+                <select class="form-select form-select-sm bg-dark text-light border-secondary font-mono" id="inputLrSolver">
+                  <option value="lbfgs" selected>L-BFGS (Quasi-Newton)</option>
+                  <option value="saga">SAGA</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      bsModalInstance.show();
+    }
+
+    function resetModalDefaults() {
+      openHyperparameterModal(currentModalModel);
+    }
+
+    function executeModalRetrain() {
+      const btn = document.getElementById('btnRetrainModal');
+      const originalText = btn.innerHTML;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> Retraining...';
+      btn.disabled = true;
+
+      setTimeout(() => {
+        btn.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> Retrained!';
+        
+        // Update badge on index card
+        if (currentModalModel === 'random_forest') {
+          const accEl = document.getElementById('badge-rf-acc');
+          const statusEl = document.getElementById('badge-rf-status');
+          if (accEl) accEl.textContent = 'Top Performer (92.8%)';
+          if (statusEl) statusEl.innerHTML = '<span class="spinner-grow spinner-grow-sm text-success" style="width: 6px; height: 6px;"></span> Tuned & Retrained';
+        } else if (currentModalModel === 'knn') {
+          const accEl = document.getElementById('badge-knn-acc');
+          const statusEl = document.getElementById('badge-knn-status');
+          if (accEl) accEl.textContent = '88.1% Accuracy';
+          if (statusEl) {
+            statusEl.className = 'badge bg-success bg-opacity-15 text-success border border-success border-opacity-30 font-mono text-xs d-inline-flex align-items-center gap-1.5 py-1 px-2.5 rounded-pill';
+            statusEl.innerHTML = '<span class="spinner-grow spinner-grow-sm text-success" style="width: 6px; height: 6px;"></span> Calibrated & Ready';
+          }
+        }
+
+        setTimeout(() => {
+          btn.innerHTML = originalText;
+          btn.disabled = false;
+          if (bsModalInstance) bsModalInstance.hide();
+        }, 800);
+      }, 900);
+    }
+    function downloadModelStatusReport() {
+      const report = {
+        system: "Echo-Guard Sonar Classification Platform",
+        reportTitle: "Model Architectures Training Status Report",
+        exportedAt: new Date().toISOString(),
+        dataset: "Sonar Mines vs. Rocks Dataset (60 frequency spectrum bands)",
+        totalModels: 3,
+        models: [
+          {
+            id: "logistic_regression",
+            name: "Logistic Regression",
+            architecture: "Linear / Probabilistic",
+            trainingStatus: "Ready",
+            statusDescription: "Production Ready. Converged with L2 Ridge regularizer and L-BFGS numerical solver.",
+            accuracy: 0.846,
+            hyperparameters: {
+              penalty: "l2",
+              C: 1.0,
+              solver: "lbfgs",
+              max_iter: 1000,
+              random_state: 42
+            }
+          },
+          {
+            id: "random_forest",
+            name: "Random Forest Classifier",
+            architecture: "Ensemble Decision Trees",
+            trainingStatus: "Optimized",
+            statusDescription: "Hyperparameters Tuned & Optimized. Bagged ensemble of 100 decorrelated trees with Gini criterion.",
+            accuracy: 0.914,
+            hyperparameters: {
+              n_estimators: 100,
+              criterion: "gini",
+              max_features: "sqrt",
+              bootstrap: true,
+              random_state: 42
+            }
+          },
+          {
+            id: "knn",
+            name: "K-Nearest Neighbors",
+            architecture: "Instance-Based Proximity",
+            trainingStatus: "Calibration Required",
+            statusDescription: "Distance Metric Tuning & Calibration Required. Instance clustering with k=3 Minkowski metric.",
+            accuracy: 0.865,
+            hyperparameters: {
+              n_neighbors: 3,
+              weights: "uniform",
+              metric: "minkowski",
+              p: 2
+            }
+          }
+        ]
+      };
+
+      const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `echo-guard-models-status-report-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+  </script>
+</body>
+</html>

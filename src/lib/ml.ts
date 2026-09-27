@@ -21,6 +21,7 @@ export interface FlaskPredictResponse {
   prediction: 'R' | 'M' | string;
   confidence?: number;
   probability?: number;
+  probabilities?: number[] | { [key: string]: number };
   message?: string;
   error?: string;
 }
@@ -39,7 +40,7 @@ export const FLASK_PREDICT_URL = `${FLASK_API_BASE}/predict`;
 export async function predictWithFlaskAPI(
   model: ValidModelName,
   features: number[]
-): Promise<{ prediction: 'R' | 'M'; model: string; confidence: number }> {
+): Promise<{ prediction: 'R' | 'M'; model: string; confidence: number; pRock: number; pMine: number }> {
   if (!features || features.length !== 60) {
     throw new Error(`Expected exactly 60 sonar features, but got ${features ? features.length : 0}.`);
   }
@@ -90,15 +91,34 @@ export async function predictWithFlaskAPI(
     // Support optional confidence/probability field if provided by the Python model
     let confidence = 0.95;
     if (typeof data.confidence === 'number' && !isNaN(data.confidence)) {
-      confidence = data.confidence;
+      confidence = Math.min(1, Math.max(0, data.confidence));
     } else if (typeof data.probability === 'number' && !isNaN(data.probability)) {
-      confidence = data.probability;
+      confidence = Math.min(1, Math.max(0, data.probability));
+    }
+
+    // Compute binary class probabilities P(Rock) and P(Mine)
+    let pMine = finalPrediction === 'M' ? confidence : Math.max(0, 1 - confidence);
+    let pRock = finalPrediction === 'R' ? confidence : Math.max(0, 1 - confidence);
+
+    // If API returned explicit probabilities array [pM, pR] or map
+    if (Array.isArray(data.probabilities) && data.probabilities.length >= 2) {
+      // In scikit-learn classes_ are sorted alphabetically: ['M', 'R']
+      pMine = data.probabilities[0];
+      pRock = data.probabilities[1];
+    } else if (data.probabilities && typeof data.probabilities === 'object') {
+      const pObj = data.probabilities as { [key: string]: number };
+      if ('M' in pObj && 'R' in pObj) {
+        pMine = pObj['M'];
+        pRock = pObj['R'];
+      }
     }
 
     return {
       prediction: finalPrediction,
       model: data.model || model,
       confidence,
+      pRock,
+      pMine,
     };
   } catch (err: any) {
     // If it's already an explicit Flask API error, rethrow
@@ -245,52 +265,6 @@ export class RandomForest {
       const isRock = countR >= countM;
       predictions.push(isRock ? 'R' : 'M');
       confidences.push(sumConf / (this.trees.length || 1));
-    }
-
-    return { predictions, confidences };
-  }
-}
-
-export class SVM {
-  private weights: number[] = [];
-  private bias: number = 0;
-
-  fit(X: DataPoint[], y: Label[], epochs: number = 100, lr: number = 0.01, lambdaParam: number = 0.01) {
-    if (X.length === 0) return;
-    this.weights = new Array(X[0].length).fill(0);
-    this.bias = 0;
-
-    const yVal = y.map(l => l === 'M' ? 1 : -1);
-
-    for (let epoch = 0; epoch < epochs; epoch++) {
-      for (let i = 0; i < X.length; i++) {
-        const linearOutput = X[i].reduce((sum, val, j) => sum + val * this.weights[j], this.bias);
-        const condition = yVal[i] * linearOutput >= 1;
-
-        if (condition) {
-          for (let j = 0; j < this.weights.length; j++) {
-            this.weights[j] -= lr * (2 * lambdaParam * this.weights[j]);
-          }
-        } else {
-          for (let j = 0; j < this.weights.length; j++) {
-            this.weights[j] -= lr * (2 * lambdaParam * this.weights[j] - yVal[i] * X[i][j]);
-          }
-          this.bias += lr * yVal[i];
-        }
-      }
-    }
-  }
-
-  predict(X: DataPoint[]): { predictions: Label[], confidences: number[] } {
-    const predictions: Label[] = [];
-    const confidences: number[] = [];
-
-    for (const testPoint of X) {
-      const margin = testPoint.reduce((sum, val, j) => sum + val * this.weights[j], this.bias);
-      const isMine = margin >= 0;
-      predictions.push(isMine ? 'M' : 'R');
-      const pseudoProb = 1 / (1 + Math.exp(-Math.max(-10, Math.min(10, margin * 2))));
-      confidences.push(isMine ? pseudoProb : 1 - pseudoProb);
     }
 
     return { predictions, confidences };

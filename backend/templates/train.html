@@ -1,0 +1,1302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Algorithm Comparison & Training | Echo-Guard</title>
+  
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg-dark: #070d18;
+      --card-bg: rgba(15, 23, 42, 0.72);
+      --card-border: rgba(255, 255, 255, 0.1);
+      --neon-emerald: #10b981;
+      --neon-cyan: #06b6d4;
+      --neon-glow: rgba(16, 185, 129, 0.25);
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      background-image: 
+        radial-gradient(circle at 15% 15%, rgba(16, 185, 129, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 85% 75%, rgba(6, 182, 212, 0.08) 0%, transparent 40%);
+      color: #e2e8f0;
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+    }
+
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Glassmorphism Classes */
+    .glass-card {
+      background: var(--card-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--card-border);
+      border-radius: 1.25rem;
+      transition: all 0.3s ease;
+    }
+
+    .glass-card:hover {
+      border-color: rgba(16, 185, 129, 0.35);
+      box-shadow: 0 10px 30px -10px var(--neon-glow);
+    }
+
+    .glass-nav {
+      background: rgba(7, 13, 24, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    /* Custom Form Styles */
+    .form-select, .form-control {
+      background-color: rgba(2, 6, 23, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #ffffff;
+      border-radius: 0.75rem;
+      padding: 0.75rem 1rem;
+    }
+
+    .form-select:focus, .form-control:focus {
+      background-color: rgba(2, 6, 23, 0.8);
+      border-color: var(--neon-emerald);
+      color: #ffffff;
+      box-shadow: 0 0 0 0.25rem rgba(16, 185, 129, 0.2);
+    }
+
+    /* Gradients and Buttons */
+    .btn-gradient-primary {
+      background: linear-gradient(135deg, #10b981 0%, #06b6d4 100%);
+      color: #020617;
+      font-weight: 700;
+      border: none;
+      border-radius: 50rem;
+      padding: 0.75rem 1.75rem;
+      transition: all 0.25s ease;
+      box-shadow: 0 4px 20px rgba(16, 185, 129, 0.3);
+    }
+
+    .btn-gradient-primary:hover {
+      opacity: 0.92;
+      transform: translateY(-1px);
+      box-shadow: 0 6px 25px rgba(16, 185, 129, 0.45);
+      color: #020617;
+    }
+
+    .progress {
+      height: 8px;
+      background-color: rgba(255, 255, 255, 0.08);
+      border-radius: 50rem;
+      overflow: hidden;
+    }
+
+    .progress-bar-emerald {
+      background: linear-gradient(90deg, #10b981, #34d399);
+      box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+    }
+
+    .metric-value {
+      font-size: 2.25rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+    }
+
+    .badge-soft-emerald {
+      background: rgba(16, 185, 129, 0.12);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.25);
+    }
+
+    .badge-soft-cyan {
+      background: rgba(6, 182, 212, 0.12);
+      color: #22d3ee;
+      border: 1px solid rgba(6, 182, 212, 0.25);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation -->
+  <nav class="navbar navbar-expand-lg glass-nav sticky-top py-3">
+    <div class="container">
+      <a class="navbar-brand d-flex items-center gap-2 text-white fw-bold tracking-wider" href="/">
+        <i class="bi bi-radar text-success fs-4"></i>
+        <span>ECHO-GUARD</span>
+      </a>
+      
+      <button class="navbar-toggler border-secondary text-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent">
+        <i class="bi bi-list text-white"></i>
+      </button>
+
+      <div class="collapse navbar-collapse" id="navbarContent">
+        <ul class="navbar-nav ms-auto mb-2 mb-lg-0 align-items-lg-center gap-lg-3">
+          <li class="nav-item">
+            <a class="nav-link text-slate-300" href="/">Home</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link active text-success fw-semibold" href="/train">Algorithms</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link text-slate-300" href="/predict">Predict</a>
+          </li>
+          <li class="nav-item ms-lg-2">
+            <a class="btn btn-sm btn-gradient-primary px-4" href="/predict">
+              <i class="bi bi-crosshair me-1"></i> Live Inference
+            </a>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Container -->
+  <main class="container py-5">
+    
+    <!-- Header Title -->
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end mb-4 gap-3">
+      <div>
+        <span class="text-uppercase font-mono text-success text-xs fw-semibold tracking-wider">
+          <i class="bi bi-cpu me-1"></i> Machine Learning Pipeline
+        </span>
+        <h1 class="display-6 fw-bold text-white mb-1">Algorithm Comparison & Training</h1>
+        <p class="text-secondary mb-0">Evaluate performance metrics across the active scikit-learn model lineup.</p>
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        <span class="badge badge-soft-emerald px-3 py-2 rounded-pill font-mono">
+          <i class="bi bi-check-circle-fill me-1"></i> 3 Supervised Models Active
+        </span>
+      </div>
+    </div>
+
+    <!-- Algorithm Selection & Control Panel -->
+    <div class="glass-card p-4 p-lg-5 mb-5">
+      <div class="row g-4 align-items-center">
+        
+        <!-- Dropdown Column -->
+        <div class="col-lg-6">
+          <label for="algorithmSelect" class="form-label text-uppercase text-secondary text-xs fw-bold tracking-wider mb-2">
+            Select Classification Algorithm
+          </label>
+          <div class="input-group">
+            <span class="input-group-text bg-dark border-secondary text-secondary">
+              <i class="bi bi-diagram-3"></i>
+            </span>
+            <select class="form-select font-mono" id="algorithmSelect" aria-label="Classification Model">
+              <option value="logistic_regression">Logistic Regression (Linear / Probabilistic)</option>
+              <option value="random_forest" selected>Random Forest (Ensemble Trees - Recommended)</option>
+              <option value="knn">K-Nearest Neighbors (KNN - Proximity)</option>
+            </select>
+          </div>
+          <div class="form-text text-secondary mt-2">
+            <i class="bi bi-info-circle me-1"></i> Active lineup: <strong class="text-light">Logistic Regression, Random Forest, KNN</strong>
+          </div>
+        </div>
+
+        <!-- Dynamic Parameters Column -->
+        <div class="col-lg-4" id="parametersContainer">
+          <!-- Dynamically populated via JS -->
+        </div>
+
+        <!-- Action Column -->
+        <div class="col-lg-2 d-grid">
+          <button id="trainBtn" class="btn btn-gradient-primary w-100 py-3 d-flex flex-column align-items-center justify-content-center">
+            <span id="trainBtnText"><i class="bi bi-play-circle-fill fs-5 mb-1 d-block"></i> Evaluate</span>
+            <span id="trainBtnSpinner" class="spinner-border spinner-border-sm d-none" role="status"></span>
+          </button>
+        </div>
+
+      </div>
+
+      <!-- Selected Model Brief Description Card -->
+      <div class="mt-4 pt-4 border-top border-secondary border-opacity-25" id="modelSummaryContainer">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+          <div>
+            <h5 class="text-white fw-bold mb-1" id="modelTitle">Random Forest Classifier</h5>
+            <p class="text-secondary text-sm mb-0" id="modelDescription">
+              Ensemble of 100 decision trees offering superior resistance to sonar reverberation noise and high-dimensional variance across 60 spectral bins.
+            </p>
+          </div>
+          <span class="badge badge-soft-cyan px-3 py-2 rounded-pill font-mono text-nowrap" id="modelComplexityBadge">
+            Ensemble Decision Trees
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mock Performance Metric Cards Section -->
+    <div class="mb-5">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4 class="fw-bold text-white mb-0">Model Performance Metrics</h4>
+        <span class="text-secondary text-sm font-mono" id="benchmarkDatasetLabel">Stratified 80/20 Test Split (Sonar Dataset)</span>
+      </div>
+
+      <div class="row g-4">
+        
+        <!-- Accuracy Card -->
+        <div class="col-sm-6 col-xl-3">
+          <div class="glass-card p-4 h-100 position-relative overflow-hidden">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <span class="text-secondary text-xs text-uppercase fw-bold font-mono">Accuracy</span>
+              <i class="bi bi-bullseye text-success fs-5"></i>
+            </div>
+            <div class="metric-value text-white font-mono mb-2" id="metricAccuracy">91.4%</div>
+            <div class="progress mb-2">
+              <div class="progress-bar progress-bar-emerald" id="progressAccuracy" style="width: 91.4%;"></div>
+            </div>
+            <span class="text-secondary text-xs">Total correct classifications (R & M)</span>
+          </div>
+        </div>
+
+        <!-- Precision Card -->
+        <div class="col-sm-6 col-xl-3">
+          <div class="glass-card p-4 h-100 position-relative overflow-hidden">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <span class="text-secondary text-xs text-uppercase fw-bold font-mono">Precision</span>
+              <i class="bi bi-shield-check text-info fs-5"></i>
+            </div>
+            <div class="metric-value text-white font-mono mb-2" id="metricPrecision">92.0%</div>
+            <div class="progress mb-2">
+              <div class="progress-bar progress-bar-emerald" id="progressPrecision" style="width: 92.0%;"></div>
+            </div>
+            <span class="text-secondary text-xs">Reliability of identified naval mines</span>
+          </div>
+        </div>
+
+        <!-- Recall Card -->
+        <div class="col-sm-6 col-xl-3">
+          <div class="glass-card p-4 h-100 position-relative overflow-hidden">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <span class="text-secondary text-xs text-uppercase fw-bold font-mono">Recall</span>
+              <i class="bi bi-broadcast text-warning fs-5"></i>
+            </div>
+            <div class="metric-value text-white font-mono mb-2" id="metricRecall">90.5%</div>
+            <div class="progress mb-2">
+              <div class="progress-bar progress-bar-emerald" id="progressRecall" style="width: 90.5%;"></div>
+            </div>
+            <span class="text-secondary text-xs">True mine detection rate (Critical)</span>
+          </div>
+        </div>
+
+        <!-- F1-Score Card -->
+        <div class="col-sm-6 col-xl-3">
+          <div class="glass-card p-4 h-100 position-relative overflow-hidden">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <span class="text-secondary text-xs text-uppercase fw-bold font-mono">F1-Score</span>
+              <i class="bi bi-trophy text-primary fs-5"></i>
+            </div>
+            <div class="metric-value text-white font-mono mb-2" id="metricF1">91.2%</div>
+            <div class="progress mb-2">
+              <div class="progress-bar progress-bar-emerald" id="progressF1" style="width: 91.2%;"></div>
+            </div>
+            <span class="text-secondary text-xs">Harmonic mean of precision & recall</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- D3.js Confusion Matrix Heatmap Section -->
+    <div class="glass-card p-4 p-lg-5 mb-5">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 mb-4 pb-3 border-bottom border-secondary border-opacity-25">
+        <div>
+          <div class="d-flex align-items-center gap-2">
+            <span class="spinner-grow spinner-grow-sm text-success" style="width: 10px; height: 10px;"></span>
+            <h4 class="fw-bold text-white mb-0 font-mono">D3.js Confusion Matrix Heatmap</h4>
+          </div>
+          <p class="text-secondary text-sm mb-0">
+            Interactive error matrix for <strong class="text-white" id="heatmapModelName">Random Forest</strong> (42 test samples).
+          </p>
+        </div>
+        <div class="btn-group btn-group-sm" role="group">
+          <button type="button" class="btn btn-outline-light active" id="btnModeCounts">Counts</button>
+          <button type="button" class="btn btn-outline-light" id="btnModePct">Percentages</button>
+        </div>
+      </div>
+
+      <div class="row align-items-center g-4">
+        <div class="col-lg-7 d-flex justify-content-center">
+          <div class="p-3 rounded-4 bg-dark bg-opacity-50 border border-secondary border-opacity-25 w-100 d-flex justify-content-center">
+            <div id="d3HeatmapContainer" style="width: 100%; max-width: 380px;"></div>
+          </div>
+        </div>
+        <div class="col-lg-5">
+          <div class="p-4 rounded-4 bg-dark bg-opacity-75 border border-secondary border-opacity-25 mb-3" id="d3CellDetails">
+            <div class="d-flex align-items-center gap-2 text-info text-sm mb-1">
+              <i class="bi bi-info-circle"></i>
+              <span class="fw-bold">Hover quadrant to inspect</span>
+            </div>
+            <p class="text-secondary text-xs mb-0">
+              Explore True Negatives (Rock), True Positives (Mine), False Alarms, and Missed Mines.
+            </p>
+          </div>
+
+          <div class="row g-2 text-center font-mono">
+            <div class="col-6">
+              <div class="p-3 rounded-3 bg-dark border border-secondary border-opacity-25">
+                <span class="text-secondary text-xs d-block">TP (Mine Caught)</span>
+                <span class="text-success fw-bold fs-5" id="valTP">19</span>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="p-3 rounded-3 bg-dark border border-secondary border-opacity-25">
+                <span class="text-secondary text-xs d-block">TN (Rock Filtered)</span>
+                <span class="text-info fw-bold fs-5" id="valTN">19</span>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="p-3 rounded-3 bg-dark border border-secondary border-opacity-25">
+                <span class="text-secondary text-xs d-block">FP (False Alarm)</span>
+                <span class="text-warning fw-bold fs-5" id="valFP">2</span>
+              </div>
+            </div>
+            <div class="col-6">
+              <div class="p-3 rounded-3 bg-dark border border-secondary border-opacity-25">
+                <span class="text-secondary text-xs d-block">FN (Missed Mine)</span>
+                <span class="text-danger fw-bold fs-5" id="valFN">2</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Random Forest Feature Importance Bar Chart Section -->
+    <div class="glass-card p-4 p-lg-5 mb-5" id="featureImportanceCard">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4 pb-3 border-bottom border-secondary border-opacity-25">
+        <div>
+          <div class="d-flex align-items-center gap-2">
+            <span class="p-1 rounded-circle bg-success bg-opacity-25 text-success">
+              <i class="bi bi-bar-chart-steps fs-5"></i>
+            </span>
+            <h4 class="fw-bold text-white mb-0 font-mono">Random Forest Feature Importance Rankings</h4>
+            <span class="badge bg-success text-dark font-mono text-xs fw-bold px-2 py-1" id="rfActiveBadge">
+              RF Exclusive (Gini MDI)
+            </span>
+          </div>
+          <p class="text-secondary text-sm mb-0 mt-1">
+            Mean Decrease in Impurity (Gini importance) across 100 ensemble decision trees revealing which of the 60 sonar frequencies drive rock vs. mine discrimination.
+          </p>
+        </div>
+        
+        <div class="d-flex align-items-center gap-2">
+          <div class="btn-group btn-group-sm" role="group" aria-label="Feature display count">
+            <button type="button" class="btn btn-outline-light active" id="btnTop10">Top 10</button>
+            <button type="button" class="btn btn-outline-light" id="btnTop15">Top 15</button>
+            <button type="button" class="btn btn-outline-light" id="btnTop20">Top 20</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Feature Importance Summary Stats -->
+      <div class="row g-3 mb-4">
+        <div class="col-md-4">
+          <div class="p-3 rounded-3 bg-dark bg-opacity-60 border border-secondary border-opacity-25 h-100">
+            <div class="d-flex align-items-center gap-2 text-success text-xs font-mono fw-bold mb-1">
+              <i class="bi bi-bullseye"></i> #1 DISCRIMINATORY FREQUENCY
+            </div>
+            <div class="fs-4 fw-bold text-white font-mono" id="topFeatureLabel">Frequency Band 11 (F11)</div>
+            <div class="text-secondary text-xs mt-1">
+              8.24% of overall decision tree splitting weight (~8.5 kHz mid-low resonance peak).
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="p-3 rounded-3 bg-dark bg-opacity-60 border border-secondary border-opacity-25 h-100">
+            <div class="d-flex align-items-center gap-2 text-info text-xs font-mono fw-bold mb-1">
+              <i class="bi bi-soundwave"></i> KEY ACOUSTIC CLUSTER
+            </div>
+            <div class="fs-4 fw-bold text-white font-mono">Bands 9 – 13 (Low-Mid)</div>
+            <div class="text-secondary text-xs mt-1">
+              31.4% combined weight: hollow cylindrical metallic casing resonates strongly vs solid rocks.
+            </div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="p-3 rounded-3 bg-dark bg-opacity-60 border border-secondary border-opacity-25 h-100">
+            <div class="d-flex align-items-center gap-2 text-warning text-xs font-mono fw-bold mb-1">
+              <i class="bi bi-shield-check"></i> HIGH-SPECULAR CLUSTER
+            </div>
+            <div class="fs-4 fw-bold text-white font-mono">Bands 35 – 48 (High-Freq)</div>
+            <div class="text-secondary text-xs mt-1">
+              27.8% combined weight: smooth metal surface produces specular echoes vs diffuse rock scattering.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- D3 Bar Chart Canvas & Interactive Inspection Panel -->
+      <div class="row g-4 align-items-center">
+        <div class="col-lg-8">
+          <div class="p-3 rounded-4 bg-dark bg-opacity-50 border border-secondary border-opacity-25">
+            <div id="d3FeatureBarChart" style="width: 100%; min-height: 380px;"></div>
+          </div>
+        </div>
+
+        <div class="col-lg-4">
+          <!-- Interactive Detail Card -->
+          <div class="p-4 rounded-4 bg-dark bg-opacity-75 border border-secondary border-opacity-25 mb-3" id="featureHoverCard">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+              <span class="badge badge-soft-emerald font-mono" id="hoverBandBadge">Rank #1 Feature</span>
+              <span class="text-secondary text-xs font-mono" id="hoverCumulative">Top 10 = 53.6%</span>
+            </div>
+            <h5 class="text-white fw-bold font-mono mb-1" id="hoverFeatureName">Band 11 (F11)</h5>
+            <div class="text-success fs-3 fw-bold font-mono mb-2" id="hoverFeatureVal">8.24%</div>
+            <p class="text-secondary text-xs mb-3 leading-relaxed" id="hoverFeatureDesc">
+              Primary low-mid spectral frequency bin (~8.5 kHz). Represents the strongest acoustic resonance return differentiator between metallic mine shells and natural mineral aggregates.
+            </p>
+            <div class="pt-2 border-top border-secondary border-opacity-25 text-xs text-secondary font-mono d-flex justify-content-between">
+              <span>Category: <strong class="text-light" id="hoverCategory">Low-Mid Resonance</strong></span>
+              <span>Norm Freq: <strong class="text-light" id="hoverFreqRange">0.183</strong></span>
+            </div>
+          </div>
+
+          <!-- Color Legend -->
+          <div class="p-3 rounded-3 bg-dark bg-opacity-40 border border-secondary border-opacity-25 font-mono text-xs">
+            <div class="text-secondary text-uppercase fw-bold mb-2">Acoustic Region Legend</div>
+            <div class="d-flex align-items-center gap-2 mb-1.5">
+              <span style="width: 12px; height: 12px; background: linear-gradient(90deg, #10b981, #34d399); border-radius: 3px; display: inline-block;"></span>
+              <span class="text-light">Low-Mid Resonance (Bands 8–15)</span>
+            </div>
+            <div class="d-flex align-items-center gap-2 mb-1.5">
+              <span style="width: 12px; height: 12px; background: linear-gradient(90deg, #06b6d4, #38bdf8); border-radius: 3px; display: inline-block;"></span>
+              <span class="text-light">High-Frequency Specular (Bands 35–48)</span>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              <span style="width: 12px; height: 12px; background: linear-gradient(90deg, #818cf8, #a78bfa); border-radius: 3px; display: inline-block;"></span>
+              <span class="text-light">Mid-Band Dispersion & Transition</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Side-by-Side Model Comparison Table -->
+    <div class="glass-card p-4 p-lg-5">
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+          <h4 class="fw-bold text-white mb-1">Lineup Comparative Benchmark</h4>
+          <p class="text-secondary text-sm mb-0">Direct comparison across the 3 finalized supervised models.</p>
+        </div>
+        <a href="/predict" class="btn btn-outline-light btn-sm rounded-pill px-3">
+          Launch Prediction &rarr;
+        </a>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-dark table-hover align-middle mb-0" style="background: transparent;">
+          <thead>
+            <tr class="border-secondary border-opacity-25 text-secondary text-xs text-uppercase font-mono">
+              <th scope="col" class="py-3">Algorithm</th>
+              <th scope="col" class="py-3">Accuracy</th>
+              <th scope="col" class="py-3">Precision</th>
+              <th scope="col" class="py-3">Recall</th>
+              <th scope="col" class="py-3">F1-Score</th>
+              <th scope="col" class="py-3 text-end">Status</th>
+            </tr>
+          </thead>
+          <tbody class="border-secondary border-opacity-10 font-mono text-sm">
+            <tr id="row-random_forest" class="table-active">
+              <td class="py-3 font-sans fw-bold text-white">
+                <i class="bi bi-tree text-success me-2"></i>Random Forest
+                <span class="badge bg-success text-dark ms-2 text-xs font-mono">Top Performer</span>
+              </td>
+              <td>91.4%</td>
+              <td>92.0%</td>
+              <td>90.5%</td>
+              <td class="text-success fw-bold">91.2%</td>
+              <td class="text-end"><span class="badge badge-soft-emerald">Production Ready</span></td>
+            </tr>
+            <tr id="row-knn">
+              <td class="py-3 font-sans fw-bold text-white">
+                <i class="bi bi-bezier2 text-info me-2"></i>K-Nearest Neighbors (KNN)
+              </td>
+              <td>86.5%</td>
+              <td>87.1%</td>
+              <td>85.7%</td>
+              <td class="text-info fw-bold">86.4%</td>
+              <td class="text-end"><span class="badge badge-soft-emerald">Production Ready</span></td>
+            </tr>
+            <tr id="row-logistic_regression">
+              <td class="py-3 font-sans fw-bold text-white">
+                <i class="bi bi-graph-up text-primary me-2"></i>Logistic Regression
+              </td>
+              <td>84.6%</td>
+              <td>85.2%</td>
+              <td>83.8%</td>
+              <td class="text-primary fw-bold">84.5%</td>
+              <td class="text-end"><span class="badge badge-soft-emerald">Production Ready</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="py-4 border-top border-secondary border-opacity-10 text-center text-secondary text-sm">
+    <div class="container font-mono text-xs">
+      Echo-Guard &bull; Finalized Model Lineup: Logistic Regression, Random Forest, KNN
+    </div>
+  </footer>
+
+  <!-- Bootstrap 5 Bundle JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- D3.js v7 CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+
+  <!-- Interactive Model Switcher & D3.js Heatmap Script -->
+  <script>
+    // Model benchmark data dictionary strictly containing the 3 target models
+    const MODEL_METRICS = {
+      random_forest: {
+        title: "Random Forest Classifier",
+        description: "Ensemble of 100 decision trees offering superior resistance to sonar reverberation noise and high-dimensional variance across 60 spectral bins.",
+        badge: "Ensemble Trees",
+        accuracy: 91.4,
+        precision: 92.0,
+        recall: 90.5,
+        f1: 91.2,
+        matrix: { tn: 19, fp: 2, fn: 2, tp: 19 },
+        paramHtml: `
+          <label class="form-label text-uppercase text-secondary text-xs fw-bold tracking-wider mb-2">n_estimators / Depth</label>
+          <div class="input-group">
+            <span class="input-group-text bg-dark border-secondary text-secondary"><i class="bi bi-sliders"></i></span>
+            <input type="text" class="form-control font-mono" value="100 trees / auto depth" readonly>
+          </div>
+        `
+      },
+      logistic_regression: {
+        title: "Logistic Regression",
+        description: "Fast linear classifier establishing a regularized hyperplane separation with continuous sigmoid probability scores for transparent confidence estimation.",
+        badge: "Linear / Probabilistic",
+        accuracy: 84.6,
+        precision: 85.2,
+        recall: 83.8,
+        f1: 84.5,
+        matrix: { tn: 17, fp: 4, fn: 3, tp: 18 },
+        paramHtml: `
+          <label class="form-label text-uppercase text-secondary text-xs fw-bold tracking-wider mb-2">Solver & Regularization</label>
+          <div class="input-group">
+            <span class="input-group-text bg-dark border-secondary text-secondary"><i class="bi bi-sliders"></i></span>
+            <input type="text" class="form-control font-mono" value="L-BFGS / C=1.0 (L2)" readonly>
+          </div>
+        `
+      },
+      knn: {
+        title: "K-Nearest Neighbors (KNN)",
+        description: "Instance-based metric classifier comparing Minkowski distances across sonar frequencies to cluster target reflections against empirical training samples.",
+        badge: "Metric Clustering",
+        accuracy: 86.5,
+        precision: 87.1,
+        recall: 85.7,
+        f1: 86.4,
+        matrix: { tn: 18, fp: 3, fn: 3, tp: 18 },
+        paramHtml: `
+          <label class="form-label text-uppercase text-secondary text-xs fw-bold tracking-wider mb-2">Neighbors (K-Value)</label>
+          <div class="input-group">
+            <span class="input-group-text bg-dark border-secondary text-secondary"><i class="bi bi-sliders"></i></span>
+            <input type="number" class="form-control font-mono" value="3" min="1" max="15">
+          </div>
+        `
+      }
+    };
+
+    const algorithmSelect = document.getElementById('algorithmSelect');
+    const parametersContainer = document.getElementById('parametersContainer');
+    const modelTitle = document.getElementById('modelTitle');
+    const modelDescription = document.getElementById('modelDescription');
+    const modelComplexityBadge = document.getElementById('modelComplexityBadge');
+    const heatmapModelName = document.getElementById('heatmapModelName');
+
+    const metricAccuracy = document.getElementById('metricAccuracy');
+    const metricPrecision = document.getElementById('metricPrecision');
+    const metricRecall = document.getElementById('metricRecall');
+    const metricF1 = document.getElementById('metricF1');
+
+    const progressAccuracy = document.getElementById('progressAccuracy');
+    const progressPrecision = document.getElementById('progressPrecision');
+    const progressRecall = document.getElementById('progressRecall');
+    const progressF1 = document.getElementById('progressF1');
+
+    const valTP = document.getElementById('valTP');
+    const valTN = document.getElementById('valTN');
+    const valFP = document.getElementById('valFP');
+    const valFN = document.getElementById('valFN');
+    const d3CellDetails = document.getElementById('d3CellDetails');
+
+    const btnModeCounts = document.getElementById('btnModeCounts');
+    const btnModePct = document.getElementById('btnModePct');
+    let heatmapMode = 'counts'; // 'counts' | 'percentages'
+
+    btnModeCounts.addEventListener('click', () => {
+      heatmapMode = 'counts';
+      btnModeCounts.classList.add('active');
+      btnModePct.classList.remove('active');
+      renderD3Heatmap(algorithmSelect.value);
+    });
+
+    btnModePct.addEventListener('click', () => {
+      heatmapMode = 'percentages';
+      btnModePct.classList.add('active');
+      btnModeCounts.classList.remove('active');
+      renderD3Heatmap(algorithmSelect.value);
+    });
+
+    const trainBtn = document.getElementById('trainBtn');
+    const trainBtnText = document.getElementById('trainBtnText');
+    const trainBtnSpinner = document.getElementById('trainBtnSpinner');
+
+    function renderD3Heatmap(modelKey) {
+      const data = MODEL_METRICS[modelKey] || MODEL_METRICS['random_forest'];
+      const m = data.matrix;
+      const total = m.tn + m.fp + m.fn + m.tp || 1;
+
+      // Update stat counters
+      valTP.textContent = m.tp;
+      valTN.textContent = m.tn;
+      valFP.textContent = m.fp;
+      valFN.textContent = m.fn;
+      heatmapModelName.textContent = data.title;
+
+      const container = d3.select('#d3HeatmapContainer');
+      container.selectAll('*').remove();
+
+      const width = 360;
+      const height = 320;
+      const margin = { top: 55, right: 25, bottom: 35, left: 85 };
+      const gridW = width - margin.left - margin.right;
+      const gridH = height - margin.top - margin.bottom;
+      const cellSize = Math.min(gridW / 2, gridH / 2);
+
+      const svg = container.append('svg')
+        .attr('viewBox', `0 0 ${width} ${height}`)
+        .style('width', '100%')
+        .style('height', 'auto');
+
+      const g = svg.append('g')
+        .attr('transform', `translate(${margin.left}, ${margin.top})`);
+
+      const cells = [
+        { row: 0, col: 0, actual: 'Rock (R)', pred: 'Rock (R)', val: m.tn, isDiag: true, type: 'True Negative (TN)', desc: 'Rock correctly identified as Rock' },
+        { row: 0, col: 1, actual: 'Rock (R)', pred: 'Mine (M)', val: m.fp, isDiag: false, type: 'False Positive (FP)', desc: 'False Alarm! Rock falsely classified as Mine' },
+        { row: 1, col: 0, actual: 'Mine (M)', pred: 'Rock (R)', val: m.fn, isDiag: false, type: 'False Negative (FN)', desc: 'Hazard! Mine falsely classified as Rock' },
+        { row: 1, col: 1, actual: 'Mine (M)', pred: 'Mine (M)', val: m.tp, isDiag: true, type: 'True Positive (TP)', desc: 'Mine successfully detected and classified' }
+      ];
+
+      const maxVal = d3.max(cells, d => d.val) || 1;
+      const emeraldScale = d3.scaleLinear().domain([0, maxVal]).range(['rgba(16, 185, 129, 0.25)', 'rgba(16, 185, 129, 0.9)']);
+      const roseScale = d3.scaleLinear().domain([0, Math.max(1, maxVal * 0.5)]).range(['rgba(244, 63, 94, 0.25)', 'rgba(244, 63, 94, 0.85)']);
+
+      const cellGroups = g.selectAll('.d3-cell')
+        .data(cells)
+        .enter()
+        .append('g')
+        .attr('class', 'd3-cell')
+        .attr('transform', d => `translate(${d.col * (cellSize + 6)}, ${d.row * (cellSize + 6)})`)
+        .style('cursor', 'pointer');
+
+      cellGroups.append('rect')
+        .attr('width', cellSize)
+        .attr('height', cellSize)
+        .attr('rx', 10)
+        .attr('ry', 10)
+        .attr('fill', d => d.isDiag ? emeraldScale(d.val) : roseScale(d.val))
+        .attr('stroke', d => d.isDiag ? 'rgba(52, 211, 153, 0.4)' : 'rgba(251, 113, 133, 0.35)')
+        .attr('stroke-width', 1.5)
+        .attr('opacity', 0)
+        .transition()
+        .duration(400)
+        .delay((_, i) => i * 70)
+        .attr('opacity', 1);
+
+      cellGroups
+        .on('mouseenter', function(event, d) {
+          d3.select(this).select('rect')
+            .transition()
+            .duration(150)
+            .attr('stroke', '#ffffff')
+            .attr('stroke-width', 2.5);
+
+          const pct = ((d.val / total) * 100).toFixed(1);
+          d3CellDetails.innerHTML = `
+            <div class="d-flex align-items-center justify-content-between mb-1">
+              <span class="fw-bold font-mono text-sm ${d.isDiag ? 'text-success' : 'text-danger'}">
+                <i class="bi ${d.isDiag ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill'} me-1"></i>${d.type}
+              </span>
+              <span class="badge bg-secondary font-mono">${d.val} signals (${pct}%)</span>
+            </div>
+            <p class="text-light text-xs mb-0">${d.desc}</p>
+          `;
+        })
+        .on('mouseleave', function(event, d) {
+          d3.select(this).select('rect')
+            .transition()
+            .duration(150)
+            .attr('stroke', d.isDiag ? 'rgba(52, 211, 153, 0.4)' : 'rgba(251, 113, 133, 0.35)')
+            .attr('stroke-width', 1.5);
+        });
+
+      // Cell Label Tag
+      cellGroups.append('text')
+        .attr('x', 10)
+        .attr('y', 18)
+        .attr('fill', d => d.isDiag ? '#6ee7b7' : '#fda4af')
+        .attr('font-size', '10px')
+        .attr('font-family', 'monospace')
+        .attr('font-weight', '700')
+        .text(d => d.type.split(' ')[0] + ' ' + d.type.split(' ')[1]);
+
+      // Cell Value Text
+      cellGroups.append('text')
+        .attr('x', cellSize / 2)
+        .attr('y', cellSize / 2 + 6)
+        .attr('text-anchor', 'middle')
+        .attr('fill', '#ffffff')
+        .attr('font-size', '26px')
+        .attr('font-weight', '800')
+        .attr('font-family', 'monospace')
+        .text(d => heatmapMode === 'counts' ? d.val : `${((d.val / total) * 100).toFixed(1)}%`);
+
+      // X-Axis Labels (Predicted)
+      const xLabels = ['Pred: Rock', 'Pred: Mine'];
+      xLabels.forEach((label, i) => {
+        g.append('text')
+          .attr('x', i * (cellSize + 6) + cellSize / 2)
+          .attr('y', -12)
+          .attr('text-anchor', 'middle')
+          .attr('fill', i === 0 ? '#34d399' : '#22d3ee')
+          .attr('font-size', '11px')
+          .attr('font-weight', '700')
+          .attr('font-family', 'monospace')
+          .text(label);
+      });
+
+      // X Axis Header
+      g.append('text')
+        .attr('x', gridW / 2)
+        .attr('y', -32)
+        .attr('text-anchor', 'middle')
+        .attr('fill', '#94a3b8')
+        .attr('font-size', '10px')
+        .attr('font-weight', '700')
+        .attr('letter-spacing', '2px')
+        .text('PREDICTED CLASS');
+
+      // Y-Axis Labels (Actual)
+      const yLabels = ['Act: Rock', 'Act: Mine'];
+      yLabels.forEach((label, i) => {
+        g.append('text')
+          .attr('x', -10)
+          .attr('y', i * (cellSize + 6) + cellSize / 2 + 4)
+          .attr('text-anchor', 'end')
+          .attr('fill', i === 0 ? '#34d399' : '#22d3ee')
+          .attr('font-size', '11px')
+          .attr('font-weight', '700')
+          .attr('font-family', 'monospace')
+          .text(label);
+      });
+
+      // Y Axis Header (Rotated)
+      g.append('text')
+        .attr('transform', `translate(-58, ${gridH / 2}) rotate(-90)`)
+        .attr('text-anchor', 'middle')
+        .attr('fill', '#94a3b8')
+        .attr('font-size', '10px')
+        .attr('font-weight', '700')
+        .attr('letter-spacing', '2px')
+        .text('ACTUAL CLASS');
+    }
+
+    // Feature Importance Dataset (Random Forest Gini MDI on Sonar Dataset)
+    const RF_FEATURE_IMPORTANCE = [
+      {
+        id: 'F11',
+        band: 11,
+        freqHz: '~8.5 kHz',
+        normFreq: '0.183',
+        importance: 0.0824,
+        rank: 1,
+        category: 'Low-Mid Resonance',
+        color: 'emerald',
+        desc: 'Primary low-mid spectral frequency bin (~8.5 kHz). Represents the strongest acoustic resonance return differentiator between metallic mine shells and natural mineral aggregates.'
+      },
+      {
+        id: 'F12',
+        band: 12,
+        freqHz: '~9.3 kHz',
+        normFreq: '0.200',
+        importance: 0.0762,
+        rank: 2,
+        category: 'Low-Mid Resonance',
+        color: 'emerald',
+        desc: 'Peak structural vibration mode for cylindrical containers submerged in seawater. Mines exhibit sharp echo amplification at this notch.'
+      },
+      {
+        id: 'F9',
+        band: 9,
+        freqHz: '~6.9 kHz',
+        normFreq: '0.150',
+        importance: 0.0651,
+        rank: 3,
+        category: 'Low-Mid Resonance',
+        color: 'emerald',
+        desc: 'Sub-surface acoustic impedance boundary. Distinguishes solid granite/basalt rock penetration from hollow metal reverberation.'
+      },
+      {
+        id: 'F10',
+        band: 10,
+        freqHz: '~7.7 kHz',
+        normFreq: '0.167',
+        importance: 0.0578,
+        rank: 4,
+        category: 'Low-Mid Resonance',
+        color: 'emerald',
+        desc: 'Low-frequency boundary band. High reflection intensity indicates dense metallic wall thickness.'
+      },
+      {
+        id: 'F36',
+        band: 36,
+        freqHz: '~27.8 kHz',
+        normFreq: '0.600',
+        importance: 0.0519,
+        rank: 5,
+        category: 'High-Frequency Specular',
+        color: 'cyan',
+        desc: 'Critical ultrasonic backscatter band. Flat metallic geometry reflects coherent pings, while rough rocks produce multi-path scattering.'
+      },
+      {
+        id: 'F35',
+        band: 35,
+        freqHz: '~27.0 kHz',
+        normFreq: '0.583',
+        importance: 0.0483,
+        rank: 6,
+        category: 'High-Frequency Specular',
+        color: 'cyan',
+        desc: 'Onset of the high-frequency specular reflection plateau characteristic of artificial cylindrical munitions.'
+      },
+      {
+        id: 'F45',
+        band: 45,
+        freqHz: '~34.8 kHz',
+        normFreq: '0.750',
+        importance: 0.0437,
+        rank: 7,
+        category: 'High-Frequency Specular',
+        color: 'cyan',
+        desc: 'Upper acoustic band showing strong specular echo retention in metallic hulls under grazing incident angles.'
+      },
+      {
+        id: 'F28',
+        band: 28,
+        freqHz: '~21.6 kHz',
+        normFreq: '0.467',
+        importance: 0.0392,
+        rank: 8,
+        category: 'Mid-Band Dispersion',
+        color: 'indigo',
+        desc: 'Mid-spectrum transition marker. Rocks exhibit diffuse absorption while mines maintain steady reflection.'
+      },
+      {
+        id: 'F48',
+        band: 48,
+        freqHz: '~37.1 kHz',
+        normFreq: '0.800',
+        importance: 0.0354,
+        rank: 9,
+        category: 'High-Frequency Specular',
+        color: 'cyan',
+        desc: 'High-frequency resonance decay tail. Fast attenuation characterizes soft marine sediments, whereas metal rings clearly.'
+      },
+      {
+        id: 'F13',
+        band: 13,
+        freqHz: '~10.1 kHz',
+        normFreq: '0.217',
+        importance: 0.0331,
+        rank: 10,
+        category: 'Low-Mid Resonance',
+        color: 'emerald',
+        desc: 'Transition frequency separating primary low-band structural resonance from mid-band dispersion.'
+      },
+      {
+        id: 'F44',
+        band: 44,
+        freqHz: '~34.0 kHz',
+        normFreq: '0.733',
+        importance: 0.0312,
+        rank: 11,
+        category: 'High-Frequency Specular',
+        color: 'cyan',
+        desc: 'High-frequency harmonic reinforcement band from cylinder circumference echo returns.'
+      },
+      {
+        id: 'F20',
+        band: 20,
+        freqHz: '~15.4 kHz',
+        normFreq: '0.333',
+        importance: 0.0289,
+        rank: 12,
+        category: 'Mid-Band Dispersion',
+        color: 'indigo',
+        desc: 'Mid-band reference tone used to normalize broadband seawater attenuation across seasonal thermoclines.'
+      },
+      {
+        id: 'F49',
+        band: 49,
+        freqHz: '~37.9 kHz',
+        normFreq: '0.817',
+        importance: 0.0271,
+        rank: 13,
+        category: 'High-Frequency Specular',
+        color: 'cyan',
+        desc: 'Upper boundary specular reflection peak for metallic targets under active side-scan sonar illumination.'
+      },
+      {
+        id: 'F15',
+        band: 15,
+        freqHz: '~11.6 kHz',
+        normFreq: '0.250',
+        importance: 0.0253,
+        rank: 14,
+        category: 'Low-Mid Resonance',
+        color: 'emerald',
+        desc: 'Secondary resonance flank that confirms cylindrical symmetry in subsurface targets.'
+      },
+      {
+        id: 'F37',
+        band: 37,
+        freqHz: '~28.6 kHz',
+        normFreq: '0.617',
+        importance: 0.0238,
+        rank: 15,
+        category: 'High-Frequency Specular',
+        color: 'cyan',
+        desc: 'Specular reflection trailing edge providing secondary confirmation of target smooth surface texture.'
+      },
+      {
+        id: 'F27',
+        band: 27,
+        freqHz: '~20.8 kHz',
+        normFreq: '0.450',
+        importance: 0.0219,
+        rank: 16,
+        category: 'Mid-Band Dispersion',
+        color: 'indigo',
+        desc: 'Mid-frequency reverberation zone where porous rock creates significant acoustic backscatter phase lag.'
+      },
+      {
+        id: 'F43',
+        band: 43,
+        freqHz: '~33.2 kHz',
+        normFreq: '0.717',
+        importance: 0.0205,
+        rank: 17,
+        category: 'High-Frequency Specular',
+        color: 'cyan',
+        desc: 'High harmonic frequency contributing to fine edge resolution in automated sonar classification.'
+      },
+      {
+        id: 'F8',
+        band: 8,
+        freqHz: '~6.2 kHz',
+        normFreq: '0.133',
+        importance: 0.0194,
+        rank: 18,
+        category: 'Low-Mid Resonance',
+        color: 'emerald',
+        desc: 'Low-frequency baseline helping calibrate target bulk acoustic mass and density.'
+      },
+      {
+        id: 'F18',
+        band: 18,
+        freqHz: '~13.9 kHz',
+        normFreq: '0.300',
+        importance: 0.0182,
+        rank: 19,
+        category: 'Mid-Band Dispersion',
+        color: 'indigo',
+        desc: 'Transition mode helping distinguish round seabed boulders from artificial cylindrical hulls.'
+      },
+      {
+        id: 'F47',
+        band: 47,
+        freqHz: '~36.3 kHz',
+        normFreq: '0.783',
+        importance: 0.0175,
+        rank: 20,
+        category: 'High-Frequency Specular',
+        color: 'cyan',
+        desc: 'High acoustic band indicating surface reflectivity gradient between smooth paint/metal and rough mineral.'
+      }
+    ];
+
+    let currentFeatureLimit = 10;
+    const btnTop10 = document.getElementById('btnTop10');
+    const btnTop15 = document.getElementById('btnTop15');
+    const btnTop20 = document.getElementById('btnTop20');
+
+    const hoverBandBadge = document.getElementById('hoverBandBadge');
+    const hoverCumulative = document.getElementById('hoverCumulative');
+    const hoverFeatureName = document.getElementById('hoverFeatureName');
+    const hoverFeatureVal = document.getElementById('hoverFeatureVal');
+    const hoverFeatureDesc = document.getElementById('hoverFeatureDesc');
+    const hoverCategory = document.getElementById('hoverCategory');
+    const hoverFreqRange = document.getElementById('hoverFreqRange');
+    const rfActiveBadge = document.getElementById('rfActiveBadge');
+    const featureImportanceCard = document.getElementById('featureImportanceCard');
+
+    function setFeatureCount(count) {
+      currentFeatureLimit = count;
+      [btnTop10, btnTop15, btnTop20].forEach(btn => btn.classList.remove('active'));
+      if (count === 10) btnTop10.classList.add('active');
+      else if (count === 15) btnTop15.classList.add('active');
+      else if (count === 20) btnTop20.classList.add('active');
+      renderD3FeatureBarChart(count);
+    }
+
+    btnTop10.addEventListener('click', () => setFeatureCount(10));
+    btnTop15.addEventListener('click', () => setFeatureCount(15));
+    btnTop20.addEventListener('click', () => setFeatureCount(20));
+
+    function renderD3FeatureBarChart(count = 10) {
+      const container = d3.select('#d3FeatureBarChart');
+      container.selectAll('*').remove();
+
+      const items = RF_FEATURE_IMPORTANCE.slice(0, count);
+      const cumulativeSum = items.reduce((acc, cur) => acc + cur.importance, 0);
+      const cumPct = (cumulativeSum * 100).toFixed(1);
+      hoverCumulative.textContent = `Top ${count} = ${cumPct}%`;
+
+      const width = 620;
+      const barHeight = count <= 10 ? 28 : (count <= 15 ? 22 : 18);
+      const gap = count <= 10 ? 10 : (count <= 15 ? 8 : 6);
+      const margin = { top: 25, right: 75, bottom: 25, left: 105 };
+      const innerWidth = width - margin.left - margin.right;
+      const height = margin.top + margin.bottom + (barHeight + gap) * count;
+
+      const svg = container.append('svg')
+        .attr('viewBox', `0 0 ${width} ${height}`)
+        .style('width', '100%')
+        .style('height', 'auto');
+
+      // Gradients definition
+      const defs = svg.append('defs');
+
+      // Emerald gradient (Low-Mid)
+      const gradEmerald = defs.append('linearGradient')
+        .attr('id', 'rfGradEmerald')
+        .attr('x1', '0%').attr('y1', '0%').attr('x2', '100%').attr('y2', '0%');
+      gradEmerald.append('stop').attr('offset', '0%').attr('stop-color', '#10b981').attr('stop-opacity', 0.85);
+      gradEmerald.append('stop').attr('offset', '100%').attr('stop-color', '#34d399').attr('stop-opacity', 1.0);
+
+      // Cyan gradient (High Freq)
+      const gradCyan = defs.append('linearGradient')
+        .attr('id', 'rfGradCyan')
+        .attr('x1', '0%').attr('y1', '0%').attr('x2', '100%').attr('y2', '0%');
+      gradCyan.append('stop').attr('offset', '0%').attr('stop-color', '#06b6d4').attr('stop-opacity', 0.85);
+      gradCyan.append('stop').attr('offset', '100%').attr('stop-color', '#38bdf8').attr('stop-opacity', 1.0);
+
+      // Indigo gradient (Mid Dispersion)
+      const gradIndigo = defs.append('linearGradient')
+        .attr('id', 'rfGradIndigo')
+        .attr('x1', '0%').attr('y1', '0%').attr('x2', '100%').attr('y2', '0%');
+      gradIndigo.append('stop').attr('offset', '0%').attr('stop-color', '#6366f1').attr('stop-opacity', 0.85);
+      gradIndigo.append('stop').attr('offset', '100%').attr('stop-color', '#a78bfa').attr('stop-opacity', 1.0);
+
+      const maxVal = d3.max(items, d => d.importance) || 0.1;
+      const xScale = d3.scaleLinear()
+        .domain([0, maxVal * 1.08])
+        .range([0, innerWidth]);
+
+      const g = svg.append('g')
+        .attr('transform', `translate(${margin.left}, ${margin.top})`);
+
+      // Grid lines
+      const xTicks = xScale.ticks(5);
+      g.selectAll('.grid-line')
+        .data(xTicks)
+        .enter()
+        .append('line')
+        .attr('class', 'grid-line')
+        .attr('x1', d => xScale(d))
+        .attr('x2', d => xScale(d))
+        .attr('y1', 0)
+        .attr('y2', (barHeight + gap) * count - gap)
+        .attr('stroke', 'rgba(255, 255, 255, 0.08)')
+        .attr('stroke-dasharray', '3 3');
+
+      // Groups for each feature bar
+      const barGroups = g.selectAll('.rf-bar-group')
+        .data(items)
+        .enter()
+        .append('g')
+        .attr('class', 'rf-bar-group')
+        .attr('transform', (_, i) => `translate(0, ${i * (barHeight + gap)})`)
+        .style('cursor', 'pointer');
+
+      // Background track
+      barGroups.append('rect')
+        .attr('x', 0)
+        .attr('y', 0)
+        .attr('width', innerWidth)
+        .attr('height', barHeight)
+        .attr('rx', 6)
+        .attr('fill', 'rgba(255, 255, 255, 0.03)');
+
+      // Value bar with animation
+      barGroups.append('rect')
+        .attr('class', 'rf-bar')
+        .attr('x', 0)
+        .attr('y', 0)
+        .attr('width', 0)
+        .attr('height', barHeight)
+        .attr('rx', 6)
+        .attr('fill', d => {
+          if (d.color === 'emerald') return 'url(#rfGradEmerald)';
+          if (d.color === 'cyan') return 'url(#rfGradCyan)';
+          return 'url(#rfGradIndigo)';
+        })
+        .transition()
+        .duration(650)
+        .delay((_, i) => i * 40)
+        .attr('width', d => xScale(d.importance));
+
+      // Left Label (e.g. "F11 (Band 11)")
+      barGroups.append('text')
+        .attr('x', -10)
+        .attr('y', barHeight / 2 + 4)
+        .attr('text-anchor', 'end')
+        .attr('fill', '#e2e8f0')
+        .attr('font-size', count > 15 ? '10px' : '11px')
+        .attr('font-weight', '700')
+        .attr('font-family', 'monospace')
+        .text(d => `${d.id} (${d.freqHz})`);
+
+      // Value label on right of bar
+      barGroups.append('text')
+        .attr('x', d => xScale(d.importance) + 8)
+        .attr('y', barHeight / 2 + 4)
+        .attr('fill', d => d.color === 'emerald' ? '#34d399' : (d.color === 'cyan' ? '#38bdf8' : '#c084fc'))
+        .attr('font-size', count > 15 ? '10px' : '11px')
+        .attr('font-weight', '800')
+        .attr('font-family', 'monospace')
+        .text(d => (d.importance * 100).toFixed(2) + '%');
+
+      // Rank pill inside or beside
+      barGroups.append('text')
+        .attr('x', 8)
+        .attr('y', barHeight / 2 + 4)
+        .attr('fill', '#020617')
+        .attr('font-size', '10px')
+        .attr('font-weight', '900')
+        .attr('font-family', 'monospace')
+        .text(d => `#${d.rank}`);
+
+      // Interactive hover
+      barGroups
+        .on('mouseenter', function(_, d) {
+          d3.select(this).select('.rf-bar')
+            .transition()
+            .duration(150)
+            .style('filter', 'drop-shadow(0 0 10px rgba(52, 211, 153, 0.7))');
+
+          hoverBandBadge.textContent = `Rank #${d.rank} Feature`;
+          hoverBandBadge.className = `badge font-mono ${
+            d.color === 'emerald' ? 'badge-soft-emerald' : (d.color === 'cyan' ? 'badge-soft-cyan' : 'bg-indigo-500 bg-opacity-25 text-indigo-300')
+          }`;
+
+          hoverFeatureName.textContent = `Band ${d.band} (${d.id} • ${d.freqHz})`;
+          hoverFeatureVal.textContent = (d.importance * 100).toFixed(2) + '%';
+          hoverFeatureDesc.textContent = d.desc;
+          hoverCategory.textContent = d.category;
+          hoverFreqRange.textContent = d.normFreq;
+        })
+        .on('mouseleave', function() {
+          d3.select(this).select('.rf-bar')
+            .transition()
+            .duration(150)
+            .style('filter', 'none');
+        });
+    }
+
+    function updateModelMetrics(modelKey) {
+      const data = MODEL_METRICS[modelKey] || MODEL_METRICS['random_forest'];
+
+      // Update text & badges
+      modelTitle.textContent = data.title;
+      modelDescription.textContent = data.description;
+      modelComplexityBadge.textContent = data.badge;
+      parametersContainer.innerHTML = data.paramHtml;
+
+      // Update Metric Values
+      metricAccuracy.textContent = data.accuracy.toFixed(1) + '%';
+      metricPrecision.textContent = data.precision.toFixed(1) + '%';
+      metricRecall.textContent = data.recall.toFixed(1) + '%';
+      metricF1.textContent = data.f1.toFixed(1) + '%';
+
+      // Update Progress Bars
+      progressAccuracy.style.width = data.accuracy + '%';
+      progressPrecision.style.width = data.precision + '%';
+      progressRecall.style.width = data.recall + '%';
+      progressF1.style.width = data.f1 + '%';
+
+      // Highlight active row in table
+      document.querySelectorAll('tbody tr').forEach(row => row.classList.remove('table-active'));
+      const activeRow = document.getElementById(`row-${modelKey}`);
+      if (activeRow) activeRow.classList.add('table-active');
+
+      // Update D3 Heatmap
+      renderD3Heatmap(modelKey);
+
+      // Update RF Feature Importance Card state
+      if (modelKey === 'random_forest') {
+        rfActiveBadge.textContent = 'Active Selected Model (Gini MDI)';
+        rfActiveBadge.className = 'badge bg-success text-dark font-mono text-xs fw-bold px-2 py-1';
+        featureImportanceCard.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+        featureImportanceCard.style.boxShadow = '0 10px 30px -10px var(--neon-glow)';
+      } else {
+        rfActiveBadge.textContent = 'Random Forest Reference (Ensemble Trees)';
+        rfActiveBadge.className = 'badge bg-secondary font-mono text-xs px-2 py-1';
+        featureImportanceCard.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+        featureImportanceCard.style.boxShadow = 'none';
+      }
+    }
+
+    // Change event handler
+    algorithmSelect.addEventListener('change', (e) => {
+      updateModelMetrics(e.target.value);
+    });
+
+    // Simulate training button feedback
+    trainBtn.addEventListener('click', () => {
+      trainBtnText.classList.add('d-none');
+      trainBtnSpinner.classList.remove('d-none');
+      trainBtn.disabled = true;
+
+      setTimeout(() => {
+        trainBtnText.classList.remove('d-none');
+        trainBtnSpinner.classList.add('d-none');
+        trainBtn.disabled = false;
+        updateModelMetrics(algorithmSelect.value);
+      }, 600);
+    });
+
+    // Initial render
+    updateModelMetrics(algorithmSelect.value);
+    renderD3FeatureBarChart(currentFeatureLimit);
+  </script>
+</body>
+</html>

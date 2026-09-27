@@ -1,11 +1,11 @@
 import React, { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppContext } from '../lib/dataContext';
+import { cn } from '../lib/utils';
 import {
   KNN,
   LogisticRegression,
   RandomForest,
-  SVM,
   calculateMetrics,
   trainTestSplit,
   DataPoint,
@@ -62,6 +62,17 @@ interface ModelBenchmark {
 export function ModelComparison() {
   const { dataset, setTrainedModel, setMetrics } = useAppContext();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const rawHighlight = searchParams.get('highlight') || searchParams.get('model');
+  const highlightedModelId = useMemo(() => {
+    if (!rawHighlight) return null;
+    const lower = rawHighlight.toLowerCase();
+    if (lower === 'logistic_regression' || lower === 'lr' || lower === 'logistic') return 'lr';
+    if (lower === 'random_forest' || lower === 'rf' || lower === 'forest') return 'rf';
+    if (lower === 'knn' || lower === 'k-nearest-neighbors') return 'knn';
+    return lower;
+  }, [rawHighlight]);
 
   // Benchmark parameters
   const [testRatio, setTestRatio] = useState<number>(0.25);
@@ -165,33 +176,6 @@ export function ModelComparison() {
       modelInstance: rfModel,
     });
 
-    // 4. Support Vector Machine (Linear SGD Hinge)
-    const svmStart = performance.now();
-    const svmModel = new SVM();
-    svmModel.fit(X_train, y_train, 120, 0.02, 0.01);
-    const svmPred = svmModel.predict(X_test);
-    const svmDuration = performance.now() - svmStart;
-    const svmMetrics = calculateMetrics(y_test, svmPred.predictions);
-
-    models.push({
-      id: 'svm',
-      name: 'Support Vector Machine',
-      shortName: 'Linear SVM',
-      category: 'Max-Margin Hyperplane',
-      color: '#f59e0b', // amber
-      accuracy: svmMetrics.accuracy,
-      precision: svmMetrics.precision,
-      recall: svmMetrics.recall,
-      f1Score: svmMetrics.f1Score,
-      specificity: svmMetrics.specificity,
-      tp: svmMetrics.tp,
-      tn: svmMetrics.tn,
-      fp: svmMetrics.fp,
-      fn: svmMetrics.fn,
-      latencyMs: Number(svmDuration.toFixed(2)),
-      modelInstance: svmModel,
-    });
-
     return {
       models,
       testCount: X_test.length,
@@ -212,6 +196,7 @@ export function ModelComparison() {
 
   const models = benchmarkResults?.models || [];
   const lrBaseline = benchmarkResults?.lrBaseline;
+  const highlightedModel = models.find(m => m.id === highlightedModelId);
 
   // Chart 1: Grouped bar chart by Metric
   // Transforms model list into metrics groups: Accuracy, Precision, Recall, F1-Score
@@ -221,28 +206,24 @@ export function ModelComparison() {
       'Logistic Regression': Number(((models.find(m => m.id === 'lr')?.accuracy || 0) * 100).toFixed(1)),
       'KNN': Number(((models.find(m => m.id === 'knn')?.accuracy || 0) * 100).toFixed(1)),
       'Random Forest': Number(((models.find(m => m.id === 'rf')?.accuracy || 0) * 100).toFixed(1)),
-      'Linear SVM': Number(((models.find(m => m.id === 'svm')?.accuracy || 0) * 100).toFixed(1)),
     },
     {
       metric: 'Precision (Mine)',
       'Logistic Regression': Number(((models.find(m => m.id === 'lr')?.precision || 0) * 100).toFixed(1)),
       'KNN': Number(((models.find(m => m.id === 'knn')?.precision || 0) * 100).toFixed(1)),
       'Random Forest': Number(((models.find(m => m.id === 'rf')?.precision || 0) * 100).toFixed(1)),
-      'Linear SVM': Number(((models.find(m => m.id === 'svm')?.precision || 0) * 100).toFixed(1)),
     },
     {
       metric: 'Recall (Mine)',
       'Logistic Regression': Number(((models.find(m => m.id === 'lr')?.recall || 0) * 100).toFixed(1)),
       'KNN': Number(((models.find(m => m.id === 'knn')?.recall || 0) * 100).toFixed(1)),
       'Random Forest': Number(((models.find(m => m.id === 'rf')?.recall || 0) * 100).toFixed(1)),
-      'Linear SVM': Number(((models.find(m => m.id === 'svm')?.recall || 0) * 100).toFixed(1)),
     },
     {
       metric: 'F1-Score',
       'Logistic Regression': Number(((models.find(m => m.id === 'lr')?.f1Score || 0) * 100).toFixed(1)),
       'KNN': Number(((models.find(m => m.id === 'knn')?.f1Score || 0) * 100).toFixed(1)),
       'Random Forest': Number(((models.find(m => m.id === 'rf')?.f1Score || 0) * 100).toFixed(1)),
-      'Linear SVM': Number(((models.find(m => m.id === 'svm')?.f1Score || 0) * 100).toFixed(1)),
     },
   ];
 
@@ -257,7 +238,6 @@ export function ModelComparison() {
       LR: (models.find(m => m.id === 'lr')?.accuracy || 0) * 100,
       KNN: (models.find(m => m.id === 'knn')?.accuracy || 0) * 100,
       RF: (models.find(m => m.id === 'rf')?.accuracy || 0) * 100,
-      SVM: (models.find(m => m.id === 'svm')?.accuracy || 0) * 100,
       fullMark: 100,
     },
     {
@@ -265,7 +245,6 @@ export function ModelComparison() {
       LR: (models.find(m => m.id === 'lr')?.precision || 0) * 100,
       KNN: (models.find(m => m.id === 'knn')?.precision || 0) * 100,
       RF: (models.find(m => m.id === 'rf')?.precision || 0) * 100,
-      SVM: (models.find(m => m.id === 'svm')?.precision || 0) * 100,
       fullMark: 100,
     },
     {
@@ -273,7 +252,6 @@ export function ModelComparison() {
       LR: (models.find(m => m.id === 'lr')?.recall || 0) * 100,
       KNN: (models.find(m => m.id === 'knn')?.recall || 0) * 100,
       RF: (models.find(m => m.id === 'rf')?.recall || 0) * 100,
-      SVM: (models.find(m => m.id === 'svm')?.recall || 0) * 100,
       fullMark: 100,
     },
     {
@@ -281,7 +259,6 @@ export function ModelComparison() {
       LR: (models.find(m => m.id === 'lr')?.f1Score || 0) * 100,
       KNN: (models.find(m => m.id === 'knn')?.f1Score || 0) * 100,
       RF: (models.find(m => m.id === 'rf')?.f1Score || 0) * 100,
-      SVM: (models.find(m => m.id === 'svm')?.f1Score || 0) * 100,
       fullMark: 100,
     },
     {
@@ -289,7 +266,6 @@ export function ModelComparison() {
       LR: (models.find(m => m.id === 'lr')?.specificity || 0) * 100,
       KNN: (models.find(m => m.id === 'knn')?.specificity || 0) * 100,
       RF: (models.find(m => m.id === 'rf')?.specificity || 0) * 100,
-      SVM: (models.find(m => m.id === 'svm')?.specificity || 0) * 100,
       fullMark: 100,
     },
   ];
@@ -338,6 +314,60 @@ export function ModelComparison() {
           Evaluate side-by-side performance metrics—Accuracy, Precision, and Recall—between Logistic Regression and competing Sonar classification architectures on unseen test samples.
         </p>
       </header>
+
+      {/* Quick Compare Spotlight Banner (When pre-filtered from #models) */}
+      {highlightedModel && (
+        <section className="p-5 rounded-3xl bg-gradient-to-r from-emerald-500/10 via-cyan-500/10 to-transparent border border-emerald-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-in fade-in shadow-[0_0_25px_rgba(52,211,153,0.15)]">
+          <div className="flex items-center gap-3.5">
+            <div 
+              className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border"
+              style={{ 
+                backgroundColor: `${highlightedModel.color}20`,
+                borderColor: `${highlightedModel.color}50`,
+                color: highlightedModel.color
+              }}
+            >
+              <Scale size={24} />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-mono font-bold text-white uppercase tracking-wider">
+                  Quick Compare Spotlight:
+                </span>
+                <span className="font-bold text-base" style={{ color: highlightedModel.color }}>
+                  {highlightedModel.name}
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                  {(highlightedModel.accuracy * 100).toFixed(1)}% Accuracy
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-white/10 text-slate-300 border border-white/10">
+                  {highlightedModel.category}
+                </span>
+              </div>
+              <p className="text-xs text-slate-300 font-mono mt-1">
+                Currently highlighting <strong className="text-white">{highlightedModel.shortName}</strong> against other naval classifiers. Scorecard table row and metrics are actively illuminated.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+            <button
+              onClick={() => handleDeploy(highlightedModel)}
+              className="px-4 py-2 rounded-xl text-xs font-mono font-bold transition-all bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 flex items-center gap-1.5 shadow-sm"
+            >
+              <Check size={13} />
+              <span>Deploy {highlightedModel.shortName}</span>
+            </button>
+            <button
+              onClick={() => setSearchParams({})}
+              className="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-mono text-slate-400 hover:text-white transition-colors border border-white/10"
+              title="Clear pre-filter and display all models normally"
+            >
+              Clear Focus
+            </button>
+          </div>
+        </section>
+      )}
 
       {/* Top Highlight Cards */}
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -606,7 +636,6 @@ export function ModelComparison() {
               <Bar dataKey="Logistic Regression" fill="#4ade80" radius={[6, 6, 0, 0]} />
               <Bar dataKey="KNN" fill="#22d3ee" radius={[6, 6, 0, 0]} />
               <Bar dataKey="Random Forest" fill="#c084fc" radius={[6, 6, 0, 0]} />
-              <Bar dataKey="Linear SVM" fill="#f59e0b" radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -780,20 +809,37 @@ export function ModelComparison() {
               {models.map(m => {
                 const isLR = m.id === 'lr';
                 const isDeployed = deployedModelId === m.id;
+                const isHighlighted = highlightedModelId === m.id;
                 const accDiff = isLR ? 0 : m.accuracy - (lrBaseline?.accuracy || 0);
 
                 return (
-                  <tr key={m.id} className="hover:bg-white/5 transition-colors">
+                  <tr 
+                    key={m.id} 
+                    className={cn(
+                      "transition-colors",
+                      isHighlighted 
+                        ? "bg-emerald-500/15 border-l-4 border-emerald-400 font-semibold shadow-[inset_0_0_15px_rgba(52,211,153,0.12)]" 
+                        : "hover:bg-white/5"
+                    )}
+                  >
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <span
-                          className="w-3 h-3 rounded-full shrink-0"
+                          className={cn(
+                            "w-3 h-3 rounded-full shrink-0",
+                            isHighlighted && "ring-2 ring-emerald-400 ring-offset-2 ring-offset-slate-950 animate-pulse"
+                          )}
                           style={{ backgroundColor: m.color }}
                         />
                         <div>
                           <div className="font-bold text-white flex items-center gap-2">
                             <span>{m.name}</span>
-                            {isLR && (
+                            {isHighlighted && (
+                              <span className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-400 text-slate-950 font-mono font-black uppercase tracking-wider shadow-sm animate-pulse">
+                                Target Focus
+                              </span>
+                            )}
+                            {isLR && !isHighlighted && (
                               <span className="text-[9px] px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/40 uppercase font-extrabold">
                                 Baseline
                               </span>
