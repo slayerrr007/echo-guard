@@ -1,0 +1,6 @@
+{
+  "summary":  "Implementation plan for a real-time Recharts 60-bin dynamic bar spectrum mini-chart in the Predict section, featuring dynamic amplitude/classification coloring, mean energy reference line, interactive hover tooltip, live inference pulse scan animation, and click-to-focus bin input navigation.",
+  "updatedAt":  "2026-10-25T09:59:33.445443385Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}

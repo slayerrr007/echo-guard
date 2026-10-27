@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   BookOpen, 
@@ -16,17 +16,34 @@ import {
   Compass, 
   Scale, 
   Terminal, 
-  ExternalLink,
-  ChevronRight,
-  Database,
-  ShieldCheck,
-  Zap,
-  Crosshair
+  ExternalLink, 
+  ChevronRight, 
+  Database, 
+  ShieldCheck, 
+  Zap, 
+  Crosshair,
+  Server,
+  FolderArchive
 } from 'lucide-react';
+import { getModelInfo, evaluateModels, ModelInfoResponse } from '../services/api';
 
 export function ModelDocumentation() {
   const [activeTab, setActiveTab] = useState<'all' | 'lr' | 'rf' | 'knn' | 'formulas'>('all');
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [modelInfo, setModelInfo] = useState<ModelInfoResponse | null>(null);
+  const [evalMetrics, setEvalMetrics] = useState<Record<string, any> | null>(null);
+  const [loadingInfo, setLoadingInfo] = useState<boolean>(true);
+
+  useEffect(() => {
+    Promise.all([
+      getModelInfo().catch((err) => { console.warn(err); return null; }),
+      evaluateModels().catch((err) => { console.warn(err); return null; })
+    ]).then(([info, evalData]) => {
+      if (info) setModelInfo(info);
+      if (evalData && evalData.models) setEvalMetrics(evalData.models);
+      setLoadingInfo(false);
+    });
+  }, []);
 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -138,6 +155,51 @@ pipeline_knn = Pipeline([
         </div>
       </header>
 
+      {/* Live Flask Model Registry Metadata */}
+      {modelInfo && modelInfo.models && (
+        <section className="bg-black/50 backdrop-blur-md rounded-3xl border border-emerald-500/30 p-6 md:p-8 space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <Server className="w-5 h-5 text-emerald-400" />
+              <h2 className="text-base font-bold text-white tracking-tight">
+                Live Scikit-Learn Production Artifacts (GET /model-info)
+              </h2>
+            </div>
+            <span className="text-xs font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-3 py-1 rounded-full self-start sm:self-auto">
+              ✓ Verified Backend Single Source of Truth
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {(['logistic_regression', 'knn', 'random_forest'] as const).map((mKey) => {
+              const detail = modelInfo.models[mKey];
+              if (!detail) return null;
+              return (
+                <div key={mKey} className="bg-black/40 rounded-2xl border border-white/10 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-mono font-bold text-white">{detail.algorithm}</span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                      {detail.library}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1 text-xxs font-mono text-slate-400">
+                    <div className="flex items-center gap-1.5">
+                      <FolderArchive size={12} className="text-cyan-400 shrink-0" />
+                      <span className="text-slate-300 truncate">Artifact: {detail.model_file}</span>
+                    </div>
+                    <div>Pipeline: <span className="text-white">{detail.pipeline_steps.join(' → ')}</span></div>
+                    <div>Preprocessing: <span className="text-emerald-400">{detail.scaler_type || 'StandardScaler'}</span></div>
+                    <div>Features: <span className="text-white">{detail.n_features} input bands</span></div>
+                    <div>Target Classes: <span className="text-white">{detail.classes.join(', ')}</span></div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       {/* Model 1: Logistic Regression */}
       {(activeTab === 'all' || activeTab === 'lr') && (
         <section className="bg-black/40 backdrop-blur-md rounded-3xl border border-white/10 p-6 md:p-8 space-y-6 hover:border-emerald-500/30 transition-colors">
@@ -161,7 +223,7 @@ pipeline_knn = Pipeline([
 
             <div className="flex items-center gap-2">
               <span className="text-xs font-mono text-slate-400 bg-white/5 px-3 py-1.5 rounded-xl border border-white/5">
-                Baseline Accuracy: <strong className="text-emerald-400">84.6%</strong>
+                Baseline Accuracy: <strong className="text-emerald-400">{evalMetrics?.logistic_regression ? `${(evalMetrics.logistic_regression.accuracy * 100).toFixed(1)}%` : 'Loading...'}</strong>
               </span>
             </div>
           </div>
@@ -314,7 +376,7 @@ pipeline_knn = Pipeline([
 
             <div className="flex items-center gap-2">
               <span className="text-xs font-mono text-slate-400 bg-white/5 px-3 py-1.5 rounded-xl border border-white/5">
-                Top Accuracy: <strong className="text-cyan-400">91.4%</strong>
+                Top Accuracy: <strong className="text-cyan-400">{evalMetrics?.random_forest ? `${(evalMetrics.random_forest.accuracy * 100).toFixed(1)}%` : 'Loading...'}</strong>
               </span>
             </div>
           </div>
@@ -473,7 +535,7 @@ pipeline_knn = Pipeline([
 
             <div className="flex items-center gap-2">
               <span className="text-xs font-mono text-slate-400 bg-white/5 px-3 py-1.5 rounded-xl border border-white/5">
-                Benchmark Accuracy: <strong className="text-indigo-400">86.5%</strong>
+                Benchmark Accuracy: <strong className="text-indigo-400">{evalMetrics?.knn ? `${(evalMetrics.knn.accuracy * 100).toFixed(1)}%` : 'Loading...'}</strong>
               </span>
             </div>
           </div>

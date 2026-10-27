@@ -1,27 +1,30 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { 
-  User, 
-  onAuthStateChanged, 
+import {
+  User,
+  onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  signInWithPopup,
   signInAnonymously,
   sendEmailVerification,
+  updateProfile,
   reload,
-  signOut as firebaseSignOut 
+  signOut as firebaseSignOut,
 } from 'firebase/auth';
-import { auth } from './firebase';
-
-export const SESSION_AUTH_KEY = 'echoguard_session_authenticated';
+import { auth, googleProvider, isFirebaseConfigured, projectId } from './firebase';
 
 export interface AuthContextType {
   user: User | null;
   loading: boolean;
   error: string | null;
+  errorCode: string | null;
   isGuest: boolean;
   isEmailVerified: boolean;
   sessionAuthenticated: boolean;
+  isConfigured: boolean;
   signInWithEmail: (email: string, password: string) => Promise<User>;
-  signUpWithEmail: (email: string, password: string) => Promise<User>;
+  signUpWithEmail: (email: string, password: string, displayName?: string) => Promise<User>;
+  signInWithGoogle: () => Promise<User>;
   signInAsGuest: () => Promise<User>;
   sendVerificationEmail: () => Promise<void>;
   reloadUser: () => Promise<User | null>;
@@ -31,137 +34,243 @@ export interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export function validateEmailAndPassword(
+  email: string,
+  password: string,
+  isRegistration = false
+): string | null {
+  const trimmedEmail = email.trim();
+  if (!trimmedEmail) {
+    return 'Please enter your email address.';
+  }
+  if (!EMAIL_REGEX.test(trimmedEmail)) {
+    return 'Invalid email format. Please enter a valid email address (e.g., operator@domain.com).';
+  }
+  if (!password) {
+    return 'Please enter your password.';
+  }
+  if (isRegistration && password.length < 6) {
+    return 'Weak password: Firebase requires passwords to be at least 6 characters long.';
+  }
+  if (!isRegistration && password.length < 6) {
+    return 'Password must be at least 6 characters long.';
+  }
+  return null;
+}
+
 export function getFriendlyAuthErrorMessage(errorCode: string, defaultMessage?: string): string {
   switch (errorCode) {
     case 'auth/invalid-email':
-      return 'Please enter a valid email address.';
+      return 'Invalid email address format. Please check the email and try again.';
+    case 'auth/missing-email':
+      return 'Please enter an email address.';
+    case 'auth/missing-password':
+      return 'Please enter a password.';
     case 'auth/user-not-found':
-      return 'No operator account found with this email.';
+      return 'No account found with this email address. Please register a new account first.';
     case 'auth/wrong-password':
     case 'auth/invalid-credential':
-      return 'Invalid email or password. Please verify your credentials.';
+    case 'auth/invalid-login-credentials':
+      return 'Incorrect email or password. Please verify your login credentials and try again.';
     case 'auth/email-already-in-use':
-      return 'An operator account is already registered with this email.';
+      return 'Duplicate account: An account with this email address already exists. Please switch to Sign In.';
     case 'auth/weak-password':
-      return 'Password should be at least 6 characters long.';
+      return 'Weak password: Password must be at least 6 characters long.';
+    case 'auth/user-disabled':
+      return 'This operator account has been disabled by an administrator.';
     case 'auth/too-many-requests':
-      return 'Too many failed attempts. Access temporarily restricted. Try again later.';
+      return 'Too many failed authentication attempts. Please wait a moment before trying again.';
     case 'auth/network-request-failed':
-      return 'Network communication failure. Please verify your internet connection.';
+      return 'Network request failed. Please check your internet connection and verify no firewall is blocking identitytoolkit.googleapis.com.';
+    case 'auth/popup-closed-by-user':
+      return 'Google Sign-In popup was closed before completing authentication.';
+    case 'auth/popup-blocked':
+      return 'Sign-in popup was blocked by the browser. Please allow popups for this site and try again.';
+    case 'auth/unauthorized-domain':
+      return `This deployment domain (${window.location.hostname}) is not yet listed in Firebase Authorized Domains for project '${projectId}'. Add '${window.location.hostname}' under Firebase Console > Authentication > Settings > Authorized domains.`;
     case 'auth/operation-not-allowed':
-      return "Email/Password sign-in is not enabled in Firebase Console for project 'echo-guard-20352'. Please enable 'Email/Password' under Authentication > Sign-in method in your Firebase Console.";
+      return `The requested sign-in provider (Email/Password) is currently disabled in Firebase Console for project '${projectId}'. Enable 'Email/Password' under Firebase Console > Authentication > Sign-in method.`;
     case 'auth/admin-restricted-operation':
-      return "Anonymous authentication is not enabled in Firebase Console for project 'echo-guard-20352'. Please enable 'Anonymous' under Authentication > Sign-in method in your Firebase Console.";
+      return `This authentication method (Anonymous / Guest or user sign-up) is restricted in Firebase Console for project '${projectId}'. Enable the provider under Firebase Console > Authentication > Sign-in method.`;
+    case 'auth/configuration-not-found':
+    case 'auth/invalid-api-key':
+      return `Firebase Authentication is not initialized or the API key for project '${projectId}' is invalid. Check Firebase Console > Authentication.`;
     default:
-      return defaultMessage || 'Authentication operation failed. Please try again.';
+      return defaultMessage || 'Authentication failed. Please check your credentials and Firebase Console settings.';
   }
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [sessionAuthenticated, setSessionAuthenticated] = useState<boolean>(() => {
-    try {
-      return sessionStorage.getItem(SESSION_AUTH_KEY) === 'true';
-    } catch {
-      return false;
-    }
-  });
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
 
   useEffect(() => {
-    // If opening in a new browser session, do not automatically bypass authentication
-    const hasSessionAccess = sessionStorage.getItem(SESSION_AUTH_KEY) === 'true';
-    if (!hasSessionAccess && auth.currentUser) {
-      firebaseSignOut(auth).catch(() => {});
+    if (!isFirebaseConfigured) {
+      setError(
+        'Firebase configuration is missing or incomplete. Please check firebase-applet-config.json.'
+      );
+      setErrorCode('auth/configuration-not-found');
+      setLoading(false);
+      return;
     }
 
-    // Listen for auth state changes with session validation
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      const isSessionAuthed = sessionStorage.getItem(SESSION_AUTH_KEY) === 'true';
-      if (currentUser && isSessionAuthed) {
+    // Subscribe to Firebase's persistent authentication state listener so login survives refreshes
+    const unsubscribe = onAuthStateChanged(
+      auth,
+      (currentUser) => {
         setUser(currentUser);
-        setSessionAuthenticated(true);
-      } else {
-        setUser(null);
-        setSessionAuthenticated(false);
+        setLoading(false);
+      },
+      (err: any) => {
+        console.warn('Firebase Auth state listener error:', err?.code || err?.message || err);
+        const code = err?.code || err?.name || 'auth/unknown';
+        setErrorCode(code);
+        setError(getFriendlyAuthErrorMessage(code, err?.message));
+        setLoading(false);
       }
-      setLoading(false);
-    }, (err) => {
-      console.warn('Firebase Auth state change notice:', err?.message || err);
-      setError(getFriendlyAuthErrorMessage(err.name, err.message));
-      setLoading(false);
-    });
+    );
 
     return () => unsubscribe();
   }, []);
 
-  const clearError = () => setError(null);
+  const clearError = () => {
+    setError(null);
+    setErrorCode(null);
+  };
 
   const signInWithEmail = async (email: string, password: string): Promise<User> => {
-    setError(null);
+    clearError();
+    if (!isFirebaseConfigured) {
+      const msg = 'Firebase is not configured. Cannot sign in.';
+      setError(msg);
+      throw new Error(msg);
+    }
+
+    const validationError = validateEmailAndPassword(email, password, false);
+    if (validationError) {
+      setError(validationError);
+      setErrorCode('auth/validation-error');
+      throw new Error(validationError);
+    }
+
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
-      sessionStorage.setItem(SESSION_AUTH_KEY, 'true');
       setUser(userCredential.user);
-      setSessionAuthenticated(true);
       return userCredential.user;
     } catch (err: any) {
-      console.warn('Firebase Email Sign-in notice:', err?.code || err?.message);
-      const friendlyMsg = getFriendlyAuthErrorMessage(err?.code, err?.message);
+      const code = err?.code || 'auth/unknown';
+      const friendlyMsg = getFriendlyAuthErrorMessage(code, err?.message);
+      setErrorCode(code);
       setError(friendlyMsg);
       throw new Error(friendlyMsg);
     }
   };
 
-  const signUpWithEmail = async (email: string, password: string): Promise<User> => {
-    setError(null);
+  const signUpWithEmail = async (
+    email: string,
+    password: string,
+    displayName?: string
+  ): Promise<User> => {
+    clearError();
+    if (!isFirebaseConfigured) {
+      const msg = 'Firebase is not configured. Cannot register account.';
+      setError(msg);
+      throw new Error(msg);
+    }
+
+    const validationError = validateEmailAndPassword(email, password, true);
+    if (validationError) {
+      setError(validationError);
+      setErrorCode('auth/validation-error');
+      throw new Error(validationError);
+    }
+
     try {
+      // Only resolves if Firebase confirms account creation on the backend
       const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
-      // Immediately dispatch verification email to the new account
+
+      if (displayName && displayName.trim()) {
+        try {
+          await updateProfile(userCredential.user, { displayName: displayName.trim() });
+        } catch (profileErr) {
+          console.warn('Optional displayName update notice:', profileErr);
+        }
+      }
+
       try {
         await sendEmailVerification(userCredential.user);
       } catch (verifyErr) {
-        console.warn('Failed to automatically dispatch verification email:', verifyErr);
+        console.warn('Verification email dispatch notice:', verifyErr);
       }
-      sessionStorage.setItem(SESSION_AUTH_KEY, 'true');
+
       setUser(userCredential.user);
-      setSessionAuthenticated(true);
       return userCredential.user;
     } catch (err: any) {
-      console.warn('Firebase Sign-up notice:', err?.code || err?.message);
-      const friendlyMsg = getFriendlyAuthErrorMessage(err?.code, err?.message);
+      const code = err?.code || 'auth/unknown';
+      const friendlyMsg = getFriendlyAuthErrorMessage(code, err?.message);
+      setErrorCode(code);
+      setError(friendlyMsg);
+      throw new Error(friendlyMsg);
+    }
+  };
+
+  const signInWithGoogle = async (): Promise<User> => {
+    clearError();
+    if (!isFirebaseConfigured) {
+      const msg = 'Firebase is not configured. Cannot sign in with Google.';
+      setError(msg);
+      throw new Error(msg);
+    }
+
+    try {
+      const userCredential = await signInWithPopup(auth, googleProvider);
+      setUser(userCredential.user);
+      return userCredential.user;
+    } catch (err: any) {
+      const code = err?.code || 'auth/unknown';
+      const friendlyMsg = getFriendlyAuthErrorMessage(code, err?.message);
+      setErrorCode(code);
       setError(friendlyMsg);
       throw new Error(friendlyMsg);
     }
   };
 
   const signInAsGuest = async (): Promise<User> => {
-    setError(null);
+    clearError();
+    if (!isFirebaseConfigured) {
+      const msg = 'Firebase is not configured. Cannot start guest session.';
+      setError(msg);
+      throw new Error(msg);
+    }
+
     try {
       const userCredential = await signInAnonymously(auth);
-      sessionStorage.setItem(SESSION_AUTH_KEY, 'true');
       setUser(userCredential.user);
-      setSessionAuthenticated(true);
       return userCredential.user;
     } catch (err: any) {
-      console.warn('Firebase Guest Sign-in notice:', err?.code || err?.message);
-      const friendlyMsg = getFriendlyAuthErrorMessage(err?.code, err?.message);
+      const code = err?.code || 'auth/unknown';
+      const friendlyMsg = getFriendlyAuthErrorMessage(code, err?.message);
+      setErrorCode(code);
       setError(friendlyMsg);
       throw new Error(friendlyMsg);
     }
   };
 
   const sendVerificationEmail = async (): Promise<void> => {
-    setError(null);
+    clearError();
     if (!auth.currentUser) {
-      throw new Error('No active operator session found.');
+      throw new Error('No active authenticated user session found.');
     }
     try {
       await sendEmailVerification(auth.currentUser);
     } catch (err: any) {
-      console.warn('Firebase Resend Verification notice:', err?.code || err?.message);
-      const friendlyMsg = getFriendlyAuthErrorMessage(err?.code, err?.message);
+      const code = err?.code || 'auth/unknown';
+      const friendlyMsg = getFriendlyAuthErrorMessage(code, err?.message);
+      setErrorCode(code);
       setError(friendlyMsg);
       throw new Error(friendlyMsg);
     }
@@ -171,9 +280,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (auth.currentUser) {
       try {
         await reload(auth.currentUser);
-        // Force state update to re-evaluate emailVerified
         const freshUser = auth.currentUser;
-        setUser(freshUser ? Object.assign(Object.create(Object.getPrototypeOf(freshUser)), freshUser) : null);
+        setUser(
+          freshUser
+            ? Object.assign(Object.create(Object.getPrototypeOf(freshUser)), freshUser)
+            : null
+        );
         return freshUser;
       } catch (err) {
         console.warn('Firebase user reload notice:', err);
@@ -183,15 +295,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
-    setError(null);
+    clearError();
     try {
-      sessionStorage.removeItem(SESSION_AUTH_KEY);
-      setSessionAuthenticated(false);
       await firebaseSignOut(auth);
       setUser(null);
     } catch (err: any) {
-      console.warn('Firebase Sign-out notice:', err?.code || err?.message);
-      const friendlyMsg = getFriendlyAuthErrorMessage(err?.code, err?.message);
+      const code = err?.code || 'auth/unknown';
+      const friendlyMsg = getFriendlyAuthErrorMessage(code, err?.message);
+      setErrorCode(code);
       setError(friendlyMsg);
       throw new Error(friendlyMsg);
     }
@@ -199,23 +310,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const isGuest = Boolean(user && user.isAnonymous);
   const isEmailVerified = Boolean(user && (user.isAnonymous || user.emailVerified));
+  const sessionAuthenticated = Boolean(user);
 
   return (
-    <AuthContext.Provider value={{ 
-      user, 
-      loading, 
-      error, 
-      isGuest, 
-      isEmailVerified, 
-      sessionAuthenticated,
-      signInWithEmail, 
-      signUpWithEmail, 
-      signInAsGuest, 
-      sendVerificationEmail, 
-      reloadUser, 
-      signOut, 
-      clearError 
-    }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        error,
+        errorCode,
+        isGuest,
+        isEmailVerified,
+        sessionAuthenticated,
+        isConfigured: isFirebaseConfigured,
+        signInWithEmail,
+        signUpWithEmail,
+        signInWithGoogle,
+        signInAsGuest,
+        sendVerificationEmail,
+        reloadUser,
+        signOut,
+        clearError,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -228,4 +345,3 @@ export function useAuth() {
   }
   return context;
 }
-

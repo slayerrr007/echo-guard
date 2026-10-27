@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import Papa from 'papaparse';
-import { DataPoint, Label, Dataset, ValidModelName } from './ml';
+import { DataPoint, Label, Dataset, ValidModelName } from '../services/api';
 
 interface AppContextType {
   dataset: Dataset | null;

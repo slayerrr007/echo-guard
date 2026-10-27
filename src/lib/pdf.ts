@@ -1,5 +1,20 @@
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable, { applyPlugin, UserOptions } from 'jspdf-autotable';
+
+// Ensure jspdf-autotable plugin is attached to jsPDF
+try {
+  applyPlugin(jsPDF);
+} catch {
+  // Plugin might already be applied
+}
+
+function runAutoTable(doc: jsPDF, options: UserOptions) {
+  if (typeof (doc as any).autoTable === 'function') {
+    (doc as any).autoTable(options);
+  } else {
+    autoTable(doc, options);
+  }
+}
 
 export function generatePredictionPDF(
   inputs: number[], 
@@ -66,8 +81,7 @@ export function generatePredictionPDF(
     ]);
   }
   
-  // @ts-ignore
-  doc.autoTable({
+  runAutoTable(doc, {
     startY: 92,
     head: [],
     body: tableData,
@@ -81,6 +95,15 @@ export function generatePredictionPDF(
 
 export interface ModelDocumentationConfig {
   statuses: Record<string, { status: string; accuracy: string }>;
+  backendMetrics?: Record<string, {
+    accuracy?: number;
+    precision?: number;
+    recall?: number;
+    f1_score?: number;
+    f1Score?: number;
+    roc_auc?: number | null;
+    latency_ms?: number;
+  }>;
   hyperparameters?: {
     logistic_regression?: Record<string, any>;
     random_forest?: Record<string, any>;
@@ -107,13 +130,13 @@ export function generateModelsDocumentationPDF(config: ModelDocumentationConfig)
   });
 
   // Current real-time states
-  const lrAcc = config.statuses.logistic_regression?.accuracy || '84.6%';
-  const rfAcc = config.statuses.random_forest?.accuracy || '91.4%';
-  const knnAcc = config.statuses.knn?.accuracy || '86.5%';
+  const lrAcc = config.statuses.logistic_regression?.accuracy || 'N/A';
+  const rfAcc = config.statuses.random_forest?.accuracy || 'N/A';
+  const knnAcc = config.statuses.knn?.accuracy || 'N/A';
 
-  const lrStatus = config.statuses.logistic_regression?.status || 'Ready';
-  const rfStatus = config.statuses.random_forest?.status || 'Optimized';
-  const knnStatus = config.statuses.knn?.status || 'Ready';
+  const lrStatus = config.statuses.logistic_regression?.status || 'Pending';
+  const rfStatus = config.statuses.random_forest?.status || 'Pending';
+  const knnStatus = config.statuses.knn?.status || 'Pending';
 
   const lrAccNum = parseFloat(lrAcc);
   const rfAccNum = parseFloat(rfAcc);
@@ -218,46 +241,50 @@ export function generateModelsDocumentationPDF(config: ModelDocumentationConfig)
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
   doc.setTextColor(15, 23, 42);
-  doc.text('1. Core Models Benchmark Matrix', 14, 75);
+  doc.text('1. Core Models Benchmark Matrix (scikit-learn Verified)', 14, 75);
+
+  const bm = config.backendMetrics;
+  const lrBm = bm?.logistic_regression;
+  const rfBm = bm?.random_forest;
+  const knnBm = bm?.knn;
 
   const matrixBody = [
     [
       'Logistic Regression',
       'Linear / Probabilistic',
       lrAcc,
-      lrAccNum < 80 ? 'RE-CALIBRATION' : lrStatus,
-      '83.3%',
-      '86.4%',
-      '84.8%',
-      '0.912',
-      '0.42 ms',
+      !isNaN(lrAccNum) && lrAccNum < 80 ? 'RE-CALIBRATION' : lrStatus,
+      lrBm?.precision !== undefined ? `${(lrBm.precision * 100).toFixed(1)}%` : 'N/A',
+      lrBm?.recall !== undefined ? `${(lrBm.recall * 100).toFixed(1)}%` : 'N/A',
+      (lrBm?.f1Score || lrBm?.f1_score) !== undefined ? `${((lrBm.f1Score || lrBm.f1_score!) * 100).toFixed(1)}%` : 'N/A',
+      lrBm?.roc_auc !== undefined && lrBm.roc_auc !== null ? lrBm.roc_auc.toFixed(3) : 'N/A',
+      lrBm?.latency_ms !== undefined ? `${lrBm.latency_ms.toFixed(2)} ms` : 'N/A',
     ],
     [
       'Random Forest Classifier',
       'Ensemble Decision Trees',
       rfAcc,
-      rfAccNum < 80 ? 'RE-CALIBRATION' : `${rfStatus} (Top)`,
-      '92.1%',
-      '90.5%',
-      '91.3%',
-      '0.964',
-      '1.85 ms',
+      !isNaN(rfAccNum) && rfAccNum < 80 ? 'RE-CALIBRATION' : `${rfStatus} (Top)`,
+      rfBm?.precision !== undefined ? `${(rfBm.precision * 100).toFixed(1)}%` : 'N/A',
+      rfBm?.recall !== undefined ? `${(rfBm.recall * 100).toFixed(1)}%` : 'N/A',
+      (rfBm?.f1Score || rfBm?.f1_score) !== undefined ? `${((rfBm.f1Score || rfBm.f1_score!) * 100).toFixed(1)}%` : 'N/A',
+      rfBm?.roc_auc !== undefined && rfBm.roc_auc !== null ? rfBm.roc_auc.toFixed(3) : 'N/A',
+      rfBm?.latency_ms !== undefined ? `${rfBm.latency_ms.toFixed(2)} ms` : 'N/A',
     ],
     [
       'K-Nearest Neighbors (KNN)',
       'Instance-Based Proximity',
       knnAcc,
-      knnAccNum < 80 ? 'RE-CALIBRATION' : knnStatus,
-      '85.7%',
-      '87.5%',
-      '86.6%',
-      '0.928',
-      '0.88 ms',
+      !isNaN(knnAccNum) && knnAccNum < 80 ? 'RE-CALIBRATION' : knnStatus,
+      knnBm?.precision !== undefined ? `${(knnBm.precision * 100).toFixed(1)}%` : 'N/A',
+      knnBm?.recall !== undefined ? `${(knnBm.recall * 100).toFixed(1)}%` : 'N/A',
+      (knnBm?.f1Score || knnBm?.f1_score) !== undefined ? `${((knnBm.f1Score || knnBm.f1_score!) * 100).toFixed(1)}%` : 'N/A',
+      knnBm?.roc_auc !== undefined && knnBm.roc_auc !== null ? knnBm.roc_auc.toFixed(3) : 'N/A',
+      knnBm?.latency_ms !== undefined ? `${knnBm.latency_ms.toFixed(2)} ms` : 'N/A',
     ],
   ];
 
-  // @ts-ignore
-  doc.autoTable({
+  runAutoTable(doc, {
     startY: 79,
     head: [[
       'Model Name',
@@ -342,8 +369,7 @@ export function generateModelsDocumentationPDF(config: ModelDocumentationConfig)
     ['Active Accuracy', `${lrAcc} (Status: ${lrStatus})`, lrAccNum < 80 ? 'ATTENTION: Sub-optimal accuracy below 80% threshold' : 'Nominal defense benchmark validated'],
   ];
 
-  // @ts-ignore
-  doc.autoTable({
+  runAutoTable(doc, {
     startY: currentY,
     head: [['Hyperparameter / Property', 'Configured Value', 'Operational Rationale']],
     body: lrConfigTable,
@@ -351,9 +377,9 @@ export function generateModelsDocumentationPDF(config: ModelDocumentationConfig)
     headStyles: { fillColor: [16, 185, 129], textColor: [255, 255, 255], fontSize: 8 },
     styles: { fontSize: 8, cellPadding: 2, textColor: [51, 65, 85] },
     columnStyles: {
-      0: { fontStyle: 'bold', width: 45 },
-      1: { fontStyle: 'bold', width: 45, textColor: [15, 23, 42] },
-      2: { width: pageWidth - 28 - 90 },
+      0: { fontStyle: 'bold', cellWidth: 45 },
+      1: { fontStyle: 'bold', cellWidth: 45, textColor: [15, 23, 42] },
+      2: { cellWidth: pageWidth - 28 - 90 },
     },
   });
 
@@ -399,8 +425,7 @@ export function generateModelsDocumentationPDF(config: ModelDocumentationConfig)
     ['Current Accuracy', `${rfAcc} (Status: ${rfStatus})`, rfAccNum < 80 ? 'ATTENTION: Sub-optimal accuracy below 80% threshold' : 'Highest recall (90.5%) for submerged mine detection'],
   ];
 
-  // @ts-ignore
-  doc.autoTable({
+  runAutoTable(doc, {
     startY: currentY,
     head: [['Hyperparameter / Property', 'Configured Value', 'Operational Rationale']],
     body: rfConfigTable,
@@ -408,14 +433,13 @@ export function generateModelsDocumentationPDF(config: ModelDocumentationConfig)
     headStyles: { fillColor: [52, 211, 153], textColor: [15, 23, 42], fontSize: 8 },
     styles: { fontSize: 8, cellPadding: 2, textColor: [51, 65, 85] },
     columnStyles: {
-      0: { fontStyle: 'bold', width: 45 },
-      1: { fontStyle: 'bold', width: 45, textColor: [15, 23, 42] },
-      2: { width: pageWidth - 28 - 90 },
+      0: { fontStyle: 'bold', cellWidth: 45 },
+      1: { fontStyle: 'bold', cellWidth: 45, textColor: [15, 23, 42] },
+      2: { cellWidth: pageWidth - 28 - 90 },
     },
   });
 
-  // @ts-ignore
-  currentY = doc.lastAutoTable.finalY + 9;
+  currentY = ((doc as any).lastAutoTable?.finalY ?? currentY) + 9;
 
   // Section 4: K-Nearest Neighbors
   doc.setFont('helvetica', 'bold');
@@ -442,8 +466,7 @@ export function generateModelsDocumentationPDF(config: ModelDocumentationConfig)
     ['Current Accuracy', `${knnAcc} (Status: ${knnStatus})`, knnAccNum < 80 ? 'ATTENTION: Sub-optimal accuracy below 80% threshold' : 'Effective clustering for acoustic frequency matching'],
   ];
 
-  // @ts-ignore
-  doc.autoTable({
+  runAutoTable(doc, {
     startY: currentY,
     head: [['Hyperparameter / Property', 'Configured Value', 'Operational Rationale']],
     body: knnConfigTable,
@@ -451,14 +474,13 @@ export function generateModelsDocumentationPDF(config: ModelDocumentationConfig)
     headStyles: { fillColor: [34, 211, 238], textColor: [15, 23, 42], fontSize: 8 },
     styles: { fontSize: 8, cellPadding: 2, textColor: [51, 65, 85] },
     columnStyles: {
-      0: { fontStyle: 'bold', width: 45 },
-      1: { fontStyle: 'bold', width: 45, textColor: [15, 23, 42] },
-      2: { width: pageWidth - 28 - 90 },
+      0: { fontStyle: 'bold', cellWidth: 45 },
+      1: { fontStyle: 'bold', cellWidth: 45, textColor: [15, 23, 42] },
+      2: { cellWidth: pageWidth - 28 - 90 },
     },
   });
 
-  // @ts-ignore
-  currentY = doc.lastAutoTable.finalY + 8;
+  currentY = ((doc as any).lastAutoTable?.finalY ?? currentY) + 8;
 
   // Compliance & System Verification Box
   doc.setDrawColor(203, 213, 225);

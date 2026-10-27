@@ -1,32 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from '../lib/dataContext';
-import { KNN, LogisticRegression, RandomForest, calculateMetrics, trainTestSplit } from '../lib/ml';
-import { Dumbbell, CheckCircle, AlertCircle, Settings, Scale, Crosshair, Activity, Sparkles, RefreshCw, BookOpen } from 'lucide-react';
+import { Dumbbell, CheckCircle, AlertCircle, Settings, Scale, Crosshair, Activity, Sparkles, RefreshCw, BookOpen, Clock } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { ConfusionMatrixHeatmap, ConfusionMatrixData } from '../components/charts/ConfusionMatrixHeatmap';
 import { FeatureImportanceChart } from '../components/charts/FeatureImportanceChart';
-
-// Standard benchmark confusion matrix defaults for the 42-sample test split
-const BENCHMARK_MATRICES: Record<string, ConfusionMatrixData> = {
-  random_forest: {
-    tn: 19,
-    fp: 2,
-    fn: 2,
-    tp: 19,
-  },
-  knn: {
-    tn: 18,
-    fp: 3,
-    fn: 3,
-    tp: 18,
-  },
-  logistic_regression: {
-    tn: 17,
-    fp: 4,
-    fn: 3,
-    tp: 18,
-  },
-};
+import { trainModel, evaluateModels, ValidModelName } from '../services/api';
 
 export function Train() {
   const { dataset, setMetrics, metrics, setTrainedModel, setSelectedModel, selectedModel } = useAppContext();
@@ -35,52 +13,118 @@ export function Train() {
   const [kValue, setKValue] = useState(3);
   const [complete, setComplete] = useState(false);
   const [liveEvaluated, setLiveEvaluated] = useState(false);
+  const [trainDurationMs, setTrainDurationMs] = useState<number | null>(null);
+  const [trainError, setTrainError] = useState<string | null>(null);
+  const [benchmarkMatrices, setBenchmarkMatrices] = useState<Record<string, ConfusionMatrixData>>({});
+  const [loadingBenchmark, setLoadingBenchmark] = useState(true);
   const navigate = useNavigate();
+
+  // Load real scikit-learn evaluation metrics on mount from Flask backend
+  useEffect(() => {
+    setLoadingBenchmark(true);
+    evaluateModels()
+      .then((res) => {
+        if (res && res.models) {
+          const updated: Record<string, ConfusionMatrixData> = {};
+          if (res.models.random_forest) {
+            updated.random_forest = {
+              tn: res.models.random_forest.tn,
+              fp: res.models.random_forest.fp,
+              fn: res.models.random_forest.fn,
+              tp: res.models.random_forest.tp,
+            };
+          }
+          if (res.models.knn) {
+            updated.knn = {
+              tn: res.models.knn.tn,
+              fp: res.models.knn.fp,
+              fn: res.models.knn.fn,
+              tp: res.models.knn.tp,
+            };
+          }
+          if (res.models.logistic_regression) {
+            updated.logistic_regression = {
+              tn: res.models.logistic_regression.tn,
+              fp: res.models.logistic_regression.fp,
+              fn: res.models.logistic_regression.fn,
+              tp: res.models.logistic_regression.tp,
+            };
+          }
+          setBenchmarkMatrices(updated);
+        }
+      })
+      .catch((err) => {
+        console.warn('Backend evaluation preload notice:', err);
+      })
+      .finally(() => {
+        setLoadingBenchmark(false);
+      });
+  }, []);
 
   const handleAlgorithmChange = (val: string) => {
     setAlgorithm(val);
     setLiveEvaluated(false);
+    setTrainError(null);
     if (val === 'knn') setSelectedModel('knn');
     else if (val === 'logistic_regression' || val === 'lr') setSelectedModel('logistic_regression');
     else if (val === 'random_forest' || val === 'rf') setSelectedModel('random_forest');
   };
 
-  const handleTrain = () => {
-    if (!dataset) return;
+  const handleTrain = async () => {
     setTraining(true);
     setComplete(false);
+    setTrainError(null);
 
-    // Simulate slight delay for UI feedback
-    setTimeout(() => {
-      const { X_train, X_test, y_train, y_test } = trainTestSplit(dataset.features, dataset.labels, 0.2);
+    const normModel: ValidModelName = 
+      algorithm === 'logistic_regression' || algorithm === 'lr' 
+        ? 'logistic_regression' 
+        : algorithm === 'random_forest' || algorithm === 'rf' 
+          ? 'random_forest' 
+          : 'knn';
+
+    try {
+      const params = normModel === 'knn' ? { kValue } : {};
+      const res = await trainModel(normModel, params);
       
-      let model;
-      if (algorithm === 'knn') {
-        model = new KNN(kValue);
-        setSelectedModel('knn');
-      } else if (algorithm === 'logistic_regression' || algorithm === 'lr') {
-        model = new LogisticRegression();
-        setSelectedModel('logistic_regression');
-      } else if (algorithm === 'random_forest' || algorithm === 'rf') {
-        model = new RandomForest();
-        setSelectedModel('random_forest');
-      } else {
-        model = new KNN(5);
-        setSelectedModel('knn');
+      const modelResult = res.results?.[normModel];
+      if (!modelResult) {
+        throw new Error(`Model '${normModel}' training result missing from backend response.`);
       }
 
-      model.fit(X_train, y_train);
-      const { predictions } = model.predict(X_test);
-      
-      const evaluatedMetrics = calculateMetrics(y_test, predictions);
-      
-      setMetrics(evaluatedMetrics);
-      setTrainedModel(model);
-      
-      setTraining(false);
+      setMetrics({
+        accuracy: modelResult.accuracy,
+        precision: modelResult.precision,
+        recall: modelResult.recall,
+        f1Score: modelResult.f1Score || modelResult.f1_score,
+        specificity: modelResult.specificity,
+        confusionMatrix: modelResult.confusionMatrix || modelResult.confusion_matrix,
+        rocAuc: modelResult.roc_auc,
+        model: normModel,
+        tp: modelResult.tp,
+        tn: modelResult.tn,
+        fp: modelResult.fp,
+        fn: modelResult.fn,
+      });
+
+      setTrainedModel({
+        name: normModel,
+        type: 'scikit-learn',
+        savedFile: modelResult.file_saved,
+      });
+      setSelectedModel(normModel);
+
+      if (typeof modelResult.train_duration_ms === 'number') {
+        setTrainDurationMs(modelResult.train_duration_ms);
+      }
+
       setComplete(true);
       setLiveEvaluated(true);
-    }, 600);
+    } catch (err: any) {
+      console.error('Training error:', err);
+      setTrainError(err.message || 'Failed to train model via Flask scikit-learn backend.');
+    } finally {
+      setTraining(false);
+    }
   };
 
   const getModelLabel = (algo: string) => {
@@ -98,8 +142,8 @@ export function Train() {
     }
   };
 
-  // Active matrix: use live calculated metrics if trained, otherwise fallback to model benchmark
-  const activeMatrix: ConfusionMatrixData = useMemo(() => {
+  // Active matrix: use live calculated metrics from Flask if trained, otherwise backend benchmark
+  const activeMatrix: ConfusionMatrixData | null = useMemo(() => {
     if (liveEvaluated && metrics && metrics.confusionMatrix) {
       return {
         tn: metrics.confusionMatrix[0][0],
@@ -108,8 +152,9 @@ export function Train() {
         tp: metrics.confusionMatrix[1][1],
       };
     }
-    return BENCHMARK_MATRICES[algorithm] || BENCHMARK_MATRICES.random_forest;
-  }, [liveEvaluated, metrics, algorithm]);
+    const key = algorithm === 'lr' ? 'logistic_regression' : algorithm === 'rf' ? 'random_forest' : algorithm;
+    return benchmarkMatrices[key] || null;
+  }, [liveEvaluated, metrics, algorithm, benchmarkMatrices]);
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-500">
@@ -221,13 +266,28 @@ export function Train() {
           </button>
         </div>
 
-        {complete && (
-          <div className="bg-green-500/10 border border-green-500/20 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 animate-in fade-in">
+        {trainError && (
+          <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-4 flex items-center gap-3 text-red-400 animate-in fade-in">
+            <AlertCircle size={20} className="shrink-0" />
+            <div className="text-xs">
+              <strong className="block text-white font-bold mb-0.5">Flask Training Error</strong>
+              <span>{trainError}</span>
+            </div>
+          </div>
+        )}
+
+        {complete && metrics && (
+          <div className="bg-green-500/10 border border-green-500/20 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 animate-in fade-in">
             <div className="flex items-center gap-3 text-green-400">
               <CheckCircle size={22} className="shrink-0" />
               <div>
-                <p className="font-bold text-white text-sm">Model Training Sequence Completed</p>
-                <p className="text-xs text-green-400/80">Evaluated on 20% test partition (42 sonar samples).</p>
+                <p className="font-bold text-white text-sm">Model Training Sequence Completed via Flask</p>
+                <p className="text-xs text-green-400/80">
+                  Evaluated on 42 test samples. Test Accuracy: <strong className="text-white font-mono">{((metrics.accuracy || 0) * 100).toFixed(1)}%</strong>
+                  {typeof trainDurationMs === 'number' && (
+                    <span className="ml-2 text-slate-400">• Latency: {trainDurationMs.toFixed(1)}ms</span>
+                  )}
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -268,14 +328,24 @@ export function Train() {
         </div>
 
         {/* D3 Component */}
-        <ConfusionMatrixHeatmap 
-          matrix={activeMatrix} 
-          modelName={getModelLabel(algorithm)} 
-        />
+        {activeMatrix ? (
+          <ConfusionMatrixHeatmap 
+            matrix={activeMatrix} 
+            modelName={getModelLabel(algorithm)} 
+          />
+        ) : (
+          <div className="py-12 flex flex-col items-center justify-center space-y-2 text-slate-400 font-mono text-xs">
+            <RefreshCw className="w-6 h-6 animate-spin text-emerald-400" />
+            <span>Loading confusion matrix from Flask backend...</span>
+          </div>
+        )}
       </div>
 
-      {/* Feature Importance Rankings Bar Chart (Random Forest specific) */}
-      <FeatureImportanceChart isRandomForestActive={algorithm === 'random_forest' || algorithm === 'rf'} />
+      {/* Influential Frequency Bins Visualization Section (Multi-Model Horizontal Bar Chart) */}
+      <FeatureImportanceChart 
+        isRandomForestActive={algorithm === 'random_forest' || algorithm === 'rf'} 
+        activeAlgorithm={algorithm}
+      />
     </div>
   );
 }

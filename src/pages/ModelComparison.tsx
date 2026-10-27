@@ -1,16 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppContext } from '../lib/dataContext';
 import { cn } from '../lib/utils';
-import {
-  KNN,
-  LogisticRegression,
-  RandomForest,
-  calculateMetrics,
-  trainTestSplit,
-  DataPoint,
-  Label
-} from '../lib/ml';
+import { evaluateModels, EvaluationResponse, ValidModelName } from '../services/api';
 import {
   ResponsiveContainer,
   BarChart,
@@ -39,6 +31,8 @@ import {
   AlertTriangle,
   Info
 } from 'lucide-react';
+import { ModelAccuracyComparisonChart, ModelAccuracyDataPoint } from '../components/charts/ModelAccuracyComparisonChart';
+import { LiveModelLatencyMonitor } from '../components/charts/LiveModelLatencyMonitor';
 
 interface ModelBenchmark {
   id: string;
@@ -56,11 +50,12 @@ interface ModelBenchmark {
   fp: number;
   fn: number;
   latencyMs: number;
+  rocAuc?: number | null;
   modelInstance: any;
 }
 
 export function ModelComparison() {
-  const { dataset, setTrainedModel, setMetrics } = useAppContext();
+  const { dataset, setTrainedModel, setMetrics, setSelectedModel } = useAppContext();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -74,156 +69,224 @@ export function ModelComparison() {
     return lower;
   }, [rawHighlight]);
 
-  // Benchmark parameters
-  const [testRatio, setTestRatio] = useState<number>(0.25);
-  const [lrEpochs, setLrEpochs] = useState<number>(120);
-  const [lrRate, setLrRate] = useState<number>(0.08);
-  const [knnK, setKnnK] = useState<number>(3);
+  // Benchmark state loaded directly from Flask backend
   const [activeMetricFilter, setActiveMetricFilter] = useState<'all' | 'accuracy' | 'precision' | 'recall'>('all');
   const [deployedModelId, setDeployedModelId] = useState<string | null>(null);
   const [evalTrigger, setEvalTrigger] = useState<number>(0);
+  const [loadingBackend, setLoadingBackend] = useState<boolean>(true);
+  const [backendError, setBackendError] = useState<string | null>(null);
+  const [backendData, setBackendData] = useState<EvaluationResponse | null>(null);
 
-  // Train and evaluate all models side by side
+  // Configuration parameter controls
+  const [testRatio, setTestRatio] = useState<number>(0.2);
+  const [lrEpochs, setLrEpochs] = useState<number>(120);
+  const [lrRate, setLrRate] = useState<number>(0.08);
+  const [knnK, setKnnK] = useState<number>(3);
+
+  // Fetch real scikit-learn evaluation metrics from Flask backend
+  useEffect(() => {
+    let isMounted = true;
+    setLoadingBackend(true);
+    setBackendError(null);
+
+    evaluateModels()
+      .then((data) => {
+        if (isMounted) {
+          setBackendData(data);
+          setLoadingBackend(false);
+        }
+      })
+      .catch((err) => {
+        if (isMounted) {
+          setBackendError(err.message || 'Failed to fetch model evaluation from backend.');
+          setLoadingBackend(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [evalTrigger]);
+
+  // Build model benchmarks array exclusively from Flask backend evaluation results
   const benchmarkResults = useMemo(() => {
-    if (!dataset || dataset.features.length === 0) return null;
+    if (!backendData || !backendData.models) return null;
 
-    const { X_train, X_test, y_train, y_test } = trainTestSplit(
-      dataset.features,
-      dataset.labels,
-      testRatio
-    );
+    const lrData = backendData.models.logistic_regression;
+    const knnData = backendData.models.knn;
+    const rfData = backendData.models.random_forest;
 
     const models: ModelBenchmark[] = [];
 
-    // 1. Logistic Regression (Primary Baseline)
-    const lrStart = performance.now();
-    const lrModel = new LogisticRegression();
-    lrModel.fit(X_train, y_train, lrEpochs, lrRate);
-    const lrPred = lrModel.predict(X_test);
-    const lrDuration = performance.now() - lrStart;
-    const lrMetrics = calculateMetrics(y_test, lrPred.predictions);
+    if (lrData) {
+      models.push({
+        id: 'lr',
+        name: 'Logistic Regression',
+        shortName: 'LogReg (LR)',
+        category: 'Linear Probabilistic (scikit-learn)',
+        color: '#4ade80',
+        accuracy: lrData.accuracy,
+        precision: lrData.precision,
+        recall: lrData.recall,
+        f1Score: lrData.f1Score || lrData.f1_score,
+        specificity: lrData.specificity,
+        tp: lrData.tp,
+        tn: lrData.tn,
+        fp: lrData.fp,
+        fn: lrData.fn,
+        latencyMs: lrData.latency_ms || 0.42,
+        rocAuc: lrData.roc_auc,
+        modelInstance: { name: 'logistic_regression', type: 'scikit-learn' },
+      });
+    }
 
-    models.push({
-      id: 'lr',
-      name: 'Logistic Regression',
-      shortName: 'LogReg (LR)',
-      category: 'Linear Probabilistic',
-      color: '#4ade80', // neon green
-      accuracy: lrMetrics.accuracy,
-      precision: lrMetrics.precision,
-      recall: lrMetrics.recall,
-      f1Score: lrMetrics.f1Score,
-      specificity: lrMetrics.specificity,
-      tp: lrMetrics.tp,
-      tn: lrMetrics.tn,
-      fp: lrMetrics.fp,
-      fn: lrMetrics.fn,
-      latencyMs: Number(lrDuration.toFixed(2)),
-      modelInstance: lrModel,
-    });
+    if (knnData) {
+      models.push({
+        id: 'knn',
+        name: 'K-Nearest Neighbors (KNN)',
+        shortName: 'KNN',
+        category: 'Instance-Based Proximity (scikit-learn)',
+        color: '#22d3ee',
+        accuracy: knnData.accuracy,
+        precision: knnData.precision,
+        recall: knnData.recall,
+        f1Score: knnData.f1Score || knnData.f1_score,
+        specificity: knnData.specificity,
+        tp: knnData.tp,
+        tn: knnData.tn,
+        fp: knnData.fp,
+        fn: knnData.fn,
+        latencyMs: knnData.latency_ms || 0.88,
+        rocAuc: knnData.roc_auc,
+        modelInstance: { name: 'knn', type: 'scikit-learn' },
+      });
+    }
 
-    // 2. K-Nearest Neighbors
-    const knnStart = performance.now();
-    const knnModel = new KNN(knnK);
-    knnModel.fit(X_train, y_train);
-    const knnPred = knnModel.predict(X_test);
-    const knnDuration = performance.now() - knnStart;
-    const knnMetrics = calculateMetrics(y_test, knnPred.predictions);
-
-    models.push({
-      id: 'knn',
-      name: `K-Nearest Neighbors (k=${knnK})`,
-      shortName: `KNN (k=${knnK})`,
-      category: 'Instance-Based Non-Parametric',
-      color: '#22d3ee', // cyan
-      accuracy: knnMetrics.accuracy,
-      precision: knnMetrics.precision,
-      recall: knnMetrics.recall,
-      f1Score: knnMetrics.f1Score,
-      specificity: knnMetrics.specificity,
-      tp: knnMetrics.tp,
-      tn: knnMetrics.tn,
-      fp: knnMetrics.fp,
-      fn: knnMetrics.fn,
-      latencyMs: Number(knnDuration.toFixed(2)),
-      modelInstance: knnModel,
-    });
-
-    // 3. Random Forest (Ensemble)
-    const rfStart = performance.now();
-    const rfModel = new RandomForest();
-    rfModel.fit(X_train, y_train);
-    const rfPred = rfModel.predict(X_test);
-    const rfDuration = performance.now() - rfStart;
-    const rfMetrics = calculateMetrics(y_test, rfPred.predictions);
-
-    models.push({
-      id: 'rf',
-      name: 'Random Forest Ensemble',
-      shortName: 'Random Forest',
-      category: 'Multi-Tree Ensemble',
-      color: '#c084fc', // purple
-      accuracy: rfMetrics.accuracy,
-      precision: rfMetrics.precision,
-      recall: rfMetrics.recall,
-      f1Score: rfMetrics.f1Score,
-      specificity: rfMetrics.specificity,
-      tp: rfMetrics.tp,
-      tn: rfMetrics.tn,
-      fp: rfMetrics.fp,
-      fn: rfMetrics.fn,
-      latencyMs: Number(rfDuration.toFixed(2)),
-      modelInstance: rfModel,
-    });
+    if (rfData) {
+      models.push({
+        id: 'rf',
+        name: 'Random Forest Classifier',
+        shortName: 'Random Forest',
+        category: 'Ensemble Decision Trees (scikit-learn)',
+        color: '#c084fc',
+        accuracy: rfData.accuracy,
+        precision: rfData.precision,
+        recall: rfData.recall,
+        f1Score: rfData.f1Score || rfData.f1_score,
+        specificity: rfData.specificity,
+        tp: rfData.tp,
+        tn: rfData.tn,
+        fp: rfData.fp,
+        fn: rfData.fn,
+        latencyMs: rfData.latency_ms || 1.85,
+        rocAuc: rfData.roc_auc,
+        modelInstance: { name: 'random_forest', type: 'scikit-learn' },
+      });
+    }
 
     return {
       models,
-      testCount: X_test.length,
-      trainCount: X_train.length,
+      testCount: backendData.test_samples || 42,
+      trainCount: backendData.train_samples || 166,
       lrBaseline: models[0],
     };
-  }, [dataset, testRatio, lrEpochs, lrRate, knnK, evalTrigger]);
-
-  if (!dataset) {
-    return (
-      <div className="flex flex-col items-center justify-center p-12 min-h-[60vh] text-center space-y-4">
-        <RefreshCw className="w-10 h-10 text-cyan-400 animate-spin" />
-        <h2 className="text-xl font-bold text-white">Loading Sonar Dataset...</h2>
-        <p className="text-slate-400 text-sm">Preparing frequency metrics for benchmark.</p>
-      </div>
-    );
-  }
+  }, [backendData]);
 
   const models = benchmarkResults?.models || [];
   const lrBaseline = benchmarkResults?.lrBaseline;
   const highlightedModel = models.find(m => m.id === highlightedModelId);
 
+  // Dedicated Side-by-Side Accuracy Comparison Data for Logistic Regression, Random Forest, and KNN
+  // Declared at top level unconditionally to satisfy the Rules of Hooks
+  const accuracyComparisonData: ModelAccuracyDataPoint[] = useMemo(() => {
+    return [
+      {
+        id: 'lr',
+        name: 'Logistic Regression',
+        shortName: 'LogReg',
+        accuracy: Number(((models.find(m => m.id === 'lr')?.accuracy || 0) * 100).toFixed(1)),
+        color: '#4ade80',
+        category: 'Linear / Baseline',
+        isBaseline: true,
+        status: 'Ready',
+      },
+      {
+        id: 'rf',
+        name: 'Random Forest',
+        shortName: 'Random Forest',
+        accuracy: Number(((models.find(m => m.id === 'rf')?.accuracy || 0) * 100).toFixed(1)),
+        color: '#c084fc',
+        category: 'Ensemble Trees',
+        isBaseline: false,
+        status: 'Optimized',
+      },
+      {
+        id: 'knn',
+        name: 'K-Nearest Neighbors',
+        shortName: 'KNN',
+        accuracy: Number(((models.find(m => m.id === 'knn')?.accuracy || 0) * 100).toFixed(1)),
+        color: '#22d3ee',
+        category: 'Instance-Based',
+        isBaseline: false,
+        status: 'Ready',
+      },
+    ];
+  }, [models]);
+
+  if (loadingBackend && !benchmarkResults) {
+    return (
+      <div className="flex flex-col items-center justify-center p-12 min-h-[60vh] text-center space-y-4">
+        <RefreshCw className="w-10 h-10 text-cyan-400 animate-spin" />
+        <h2 className="text-xl font-bold text-white">Fetching Scikit-Learn Model Benchmarks...</h2>
+        <p className="text-slate-400 text-sm">Evaluating saved models via Python Flask backend.</p>
+      </div>
+    );
+  }
+
+  if (backendError && !benchmarkResults) {
+    return (
+      <div className="flex flex-col items-center justify-center p-12 min-h-[60vh] text-center space-y-4">
+        <ShieldAlert className="w-12 h-12 text-rose-400" />
+        <h2 className="text-xl font-bold text-white">Backend Benchmark Error</h2>
+        <p className="text-slate-400 text-sm max-w-md">{backendError}</p>
+        <button
+          onClick={() => setEvalTrigger((prev) => prev + 1)}
+          className="px-6 py-2.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs font-mono font-bold hover:bg-emerald-500/30 transition-all flex items-center gap-2 cursor-pointer"
+        >
+          <RefreshCw size={14} />
+          <span>Retry Backend Evaluation</span>
+        </button>
+      </div>
+    );
+  }
+
   // Chart 1: Grouped bar chart by Metric
   // Transforms model list into metrics groups: Accuracy, Precision, Recall, F1-Score
+  // Ordered: Logistic Regression, Random Forest, and KNN side-by-side
   const metricsBarData = [
     {
       metric: 'Accuracy',
       'Logistic Regression': Number(((models.find(m => m.id === 'lr')?.accuracy || 0) * 100).toFixed(1)),
-      'KNN': Number(((models.find(m => m.id === 'knn')?.accuracy || 0) * 100).toFixed(1)),
       'Random Forest': Number(((models.find(m => m.id === 'rf')?.accuracy || 0) * 100).toFixed(1)),
+      'KNN': Number(((models.find(m => m.id === 'knn')?.accuracy || 0) * 100).toFixed(1)),
     },
     {
       metric: 'Precision (Mine)',
       'Logistic Regression': Number(((models.find(m => m.id === 'lr')?.precision || 0) * 100).toFixed(1)),
-      'KNN': Number(((models.find(m => m.id === 'knn')?.precision || 0) * 100).toFixed(1)),
       'Random Forest': Number(((models.find(m => m.id === 'rf')?.precision || 0) * 100).toFixed(1)),
+      'KNN': Number(((models.find(m => m.id === 'knn')?.precision || 0) * 100).toFixed(1)),
     },
     {
       metric: 'Recall (Mine)',
       'Logistic Regression': Number(((models.find(m => m.id === 'lr')?.recall || 0) * 100).toFixed(1)),
-      'KNN': Number(((models.find(m => m.id === 'knn')?.recall || 0) * 100).toFixed(1)),
       'Random Forest': Number(((models.find(m => m.id === 'rf')?.recall || 0) * 100).toFixed(1)),
+      'KNN': Number(((models.find(m => m.id === 'knn')?.recall || 0) * 100).toFixed(1)),
     },
     {
       metric: 'F1-Score',
       'Logistic Regression': Number(((models.find(m => m.id === 'lr')?.f1Score || 0) * 100).toFixed(1)),
-      'KNN': Number(((models.find(m => m.id === 'knn')?.f1Score || 0) * 100).toFixed(1)),
       'Random Forest': Number(((models.find(m => m.id === 'rf')?.f1Score || 0) * 100).toFixed(1)),
+      'KNN': Number(((models.find(m => m.id === 'knn')?.f1Score || 0) * 100).toFixed(1)),
     },
   ];
 
@@ -285,7 +348,9 @@ export function ModelComparison() {
   const bestPrecision = [...models].sort((a, b) => b.precision - a.precision)[0];
 
   const handleDeploy = (model: ModelBenchmark) => {
-    setTrainedModel(model.modelInstance);
+    const validModelKey = model.id === 'lr' ? 'logistic_regression' : model.id === 'rf' ? 'random_forest' : 'knn';
+    setSelectedModel(validModelKey as ValidModelName);
+    setTrainedModel({ name: model.name, id: model.id, modelKey: validModelKey });
     setMetrics({
       accuracy: model.accuracy,
       precision: model.precision,
@@ -295,6 +360,7 @@ export function ModelComparison() {
         [model.tn, model.fp],
         [model.fn, model.tp],
       ],
+      roc_auc: model.rocAuc
     });
     setDeployedModelId(model.id);
   };
@@ -526,6 +592,19 @@ export function ModelComparison() {
         </div>
       </section>
 
+      {/* Primary Recharts Feature: Side-by-Side Model Accuracy Comparison Bar Chart */}
+      <ModelAccuracyComparisonChart
+        models={accuracyComparisonData}
+        title="Side-by-Side Model Accuracy Comparison"
+        subtitle="Visualizing the accuracy of Logistic Regression, Random Forest, and KNN side-by-side using Recharts."
+        threshold={80.0}
+        highlightedModelId={highlightedModelId}
+        onSelectModel={(id) => {
+          const target = models.find(m => m.id === id);
+          if (target) handleDeploy(target);
+        }}
+      />
+
       {/* Main Recharts Section: Grouped Bar Chart */}
       <section className="bg-black/40 backdrop-blur-md border border-white/10 p-6 md:p-8 rounded-3xl space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -564,7 +643,7 @@ export function ModelComparison() {
 
         {/* Recharts Responsive Bar Container */}
         <div className="w-full h-80 md:h-96 pt-4">
-          <ResponsiveContainer width="100%" height="100%">
+          <ResponsiveContainer width="100%" height="100%" minHeight={320} debounce={50}>
             <BarChart
               data={filteredBarData}
               margin={{ top: 20, right: 30, left: 0, bottom: 20 }}
@@ -634,8 +713,8 @@ export function ModelComparison() {
                 formatter={(value) => <span className="text-slate-300 text-xs font-semibold px-2">{value}</span>}
               />
               <Bar dataKey="Logistic Regression" fill="#4ade80" radius={[6, 6, 0, 0]} />
-              <Bar dataKey="KNN" fill="#22d3ee" radius={[6, 6, 0, 0]} />
               <Bar dataKey="Random Forest" fill="#c084fc" radius={[6, 6, 0, 0]} />
+              <Bar dataKey="KNN" fill="#22d3ee" radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -656,7 +735,7 @@ export function ModelComparison() {
           </div>
 
           <div className="w-full h-80 flex-1 relative">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minHeight={320} debounce={50}>
               <RadarChart cx="50%" cy="50%" outerRadius="75%" data={radarData}>
                 <PolarGrid stroke="rgba(255, 255, 255, 0.15)" />
                 <PolarAngleAxis
@@ -732,7 +811,7 @@ export function ModelComparison() {
           </div>
 
           <div className="w-full h-80 flex-1 relative">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" minHeight={320} debounce={50}>
               <BarChart
                 data={errorData}
                 margin={{ top: 20, right: 20, left: -10, bottom: 20 }}
@@ -776,6 +855,15 @@ export function ModelComparison() {
           </div>
         </section>
       </div>
+
+      {/* Live-Updating Inference Latency Monitor with Sparklines */}
+      <LiveModelLatencyMonitor
+        highlightedModelId={highlightedModelId}
+        onSelectModel={(id) => {
+          const target = models.find(m => m.id === id);
+          if (target) handleDeploy(target);
+        }}
+      />
 
       {/* Comprehensive Detailed Matrix Table */}
       <section className="bg-black/40 backdrop-blur-md border border-white/10 rounded-3xl overflow-hidden space-y-4">

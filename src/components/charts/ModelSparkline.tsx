@@ -61,17 +61,20 @@ export function ModelSparkline({
   gainText,
   accentClass = 'text-emerald-400'
 }: ModelSparklineProps) {
-  const minVal = Math.max(0, Math.floor(Math.min(...data.map(d => d.accuracy)) - 1.5));
-  const maxVal = Math.min(100, Math.ceil(Math.max(...data.map(d => d.accuracy)) + 1.5));
-  const firstPt = data[0] || { label: 'Iter 1', accuracy: 0 };
-  const lastPt = data[data.length - 1] || { label: 'Iter 5', accuracy: 0 };
+  const accValues = data.length > 0 ? data.map(d => d.accuracy) : [0];
+  const minVal = Math.max(0, Math.floor(Math.min(...accValues) - 1.5));
+  const maxVal = Math.min(100, Math.ceil(Math.max(...accValues) + 1.5));
+  const firstPt = data[0] || { label: 'Baseline', accuracy: 0 };
+  const lastPt = data[data.length - 1] || { label: 'Baseline', accuracy: 0 };
 
-  const isDegraded = lastPt.accuracy < 80.0;
+  const isDegraded = lastPt.accuracy > 0 && lastPt.accuracy < 80.0;
   const activeColor = isDegraded ? '#f59e0b' : color;
   const activeAccent = isDegraded ? 'text-amber-400' : accentClass;
-  const activeGain = isDegraded 
-    ? `${(lastPt.accuracy - firstPt.accuracy > 0 ? '+' : '')}${(lastPt.accuracy - firstPt.accuracy).toFixed(1)}% (Drop)` 
-    : gainText;
+  const activeGain = data.length <= 1
+    ? 'Baseline'
+    : isDegraded 
+      ? `${(lastPt.accuracy - firstPt.accuracy > 0 ? '+' : '')}${(lastPt.accuracy - firstPt.accuracy).toFixed(1)}% (Drop)` 
+      : `${(lastPt.accuracy - firstPt.accuracy >= 0 ? '+' : '')}${(lastPt.accuracy - firstPt.accuracy).toFixed(1)}%`;
 
   return (
     <div className={`p-3.5 rounded-2xl bg-black/50 border space-y-2 transition-all duration-300 shadow-inner group/sparkline ${
@@ -102,7 +105,7 @@ export function ModelSparkline({
         {/* Subtle grid background scanline overlay */}
         <div className="absolute inset-0 bg-gradient-to-b from-white/[0.02] to-transparent pointer-events-none rounded-lg" />
         
-        <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={48}>
+        <ResponsiveContainer width="100%" height={56} minWidth={100} debounce={50}>
           <AreaChart 
             data={data} 
             margin={{ top: 4, right: 6, left: 6, bottom: 2 }}

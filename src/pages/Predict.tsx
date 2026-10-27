@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAppContext } from '../lib/dataContext';
+import { useAuth } from '../lib/authContext';
+import { isFirebaseConfigured } from '../lib/firebase';
 import { generatePredictionPDF } from '../lib/pdf';
 import { 
   Crosshair, 
@@ -14,12 +17,31 @@ import {
   Activity,
   Percent,
   TrendingUp,
-  ShieldAlert
+  ShieldAlert,
+  Volume2,
+  VolumeX,
+  Radio,
+  Database,
+  CheckCircle2,
+  Lock,
+  History as HistoryIcon
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import Papa from 'papaparse';
-import { predictWithFlaskAPI, ValidModelName } from '../lib/ml';
+import { predict, ValidModelName } from '../services/api';
+import {
+  savePredictionToFirestore,
+  parseFirestoreErrorMessage,
+} from '../services/predictionHistoryService';
 import { useToast } from '../components/ui/ToastContext';
+import { SonarWaveChart } from '../components/charts/SonarWaveChart';
+import { SonarBarSpectrumMiniChart } from '../components/charts/SonarBarSpectrumMiniChart';
+import { RadialConfidenceDial } from '../components/charts/RadialConfidenceDial';
+import { SignalFeature3D } from '../components/three/SignalFeature3D';
+import { PredictionResult3D } from '../components/three/PredictionResult3D';
+import { playSonarMinePing } from '../lib/sonarAudio';
+
+const FLASK_PREDICT_URL = '/api/predict';
 
 // Default representative sonar frequency baseline (60 floats) from Sonar Mines vs Rocks dataset
 const DEFAULT_SAMPLE_FEATURES: number[] = [
@@ -43,19 +65,67 @@ const BORDERLINE_SAMPLE_FEATURES: number[] = [
 
 interface PredictionResult {
   label: 'ROCK' | 'MINE';
+  code: 'R' | 'M';
   conf: number;
   pRock: number;
   pMine: number;
   modelName: string;
+  hasConfidence: boolean;
+  hasRockProbability: boolean;
+  hasMineProbability: boolean;
 }
 
 export function Predict() {
   const { dataset, selectedModel, setSelectedModel } = useAppContext();
+  const { user } = useAuth();
   const { toast } = useToast();
-  const [inputs, setInputs] = useState<number[]>(new Array(60).fill(0));
+  const [inputs, setInputs] = useState<number[]>([...DEFAULT_SAMPLE_FEATURES]);
   const [result, setResult] = useState<PredictionResult | null>(null);
   const [isPredicting, setIsPredicting] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [isSavingFirestore, setIsSavingFirestore] = useState(false);
+  const [savedDocId, setSavedDocId] = useState<string | null>(null);
+  const [firestoreSaveError, setFirestoreSaveError] = useState<string | null>(null);
+  const [audioEnabled, setAudioEnabled] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('echo_guard_audio_enabled') !== 'false';
+    } catch {
+      return true;
+    }
+  });
+  const [isPinging, setIsPinging] = useState(false);
+  const [focusedBinIndex, setFocusedBinIndex] = useState<number | null>(null);
+
+  const handleSelectBinFromSpectrum = (idx: number) => {
+    setFocusedBinIndex(idx);
+    const inputEl = document.getElementById(`sonar-bin-input-${idx}`) as HTMLInputElement | null;
+    if (inputEl) {
+      inputEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      inputEl.focus();
+      inputEl.select();
+    }
+  };
+
+  const toggleAudio = () => {
+    const next = !audioEnabled;
+    setAudioEnabled(next);
+    try {
+      localStorage.setItem('echo_guard_audio_enabled', String(next));
+    } catch {
+      // Ignore localStorage exceptions
+    }
+    if (next) {
+      playSonarMinePing({ volume: 0.14 });
+      setIsPinging(true);
+      setTimeout(() => setIsPinging(false), 850);
+    }
+  };
+
+  const handleTestPing = () => {
+    playSonarMinePing();
+    setIsPinging(true);
+    setTimeout(() => setIsPinging(false), 850);
+  };
 
   const handleInputChange = (idx: number, val: string) => {
     const newInputs = [...inputs];
@@ -83,6 +153,8 @@ export function Predict() {
   const handlePredict = async () => {
     setIsPredicting(true);
     setApiError(null);
+    setSavedDocId(null);
+    setFirestoreSaveError(null);
 
     try {
       // Validate all 60 inputs
@@ -94,20 +166,32 @@ export function Predict() {
       // "knn" -> "knn"
       // "logistic_regression" -> "logistic_regression"
       // "random_forest" -> "random_forest"
-      const res = await predictWithFlaskAPI(selectedModel, inputs);
+      const res = await predict(selectedModel, inputs);
 
       const label: 'ROCK' | 'MINE' = res.prediction === 'R' ? 'ROCK' : 'MINE';
-      const conf = typeof res.confidence === 'number' ? res.confidence : 0.95;
-      const pRock = typeof res.pRock === 'number' ? res.pRock : (label === 'ROCK' ? conf : Math.max(0, 1 - conf));
-      const pMine = typeof res.pMine === 'number' ? res.pMine : (label === 'MINE' ? conf : Math.max(0, 1 - conf));
+      const code: 'R' | 'M' = res.prediction === 'R' ? 'R' : 'M';
+      const conf = res.confidence;
+      const pRock = res.rock_probability;
+      const pMine = res.mine_probability;
 
       setResult({
         label,
+        code,
         conf,
         pRock,
         pMine,
         modelName: res.model || selectedModel,
+        hasConfidence: Boolean(res.hasConfidence),
+        hasRockProbability: Boolean(res.hasRockProbability),
+        hasMineProbability: Boolean(res.hasMineProbability),
       });
+
+      // Play subtle submarine acoustic sonar ping via AudioContext when a 'MINE' target is classified
+      if (label === 'MINE' && audioEnabled) {
+        playSonarMinePing({ volume: 0.18 });
+        setIsPinging(true);
+        setTimeout(() => setIsPinging(false), 900);
+      }
 
       // Alert user via toast notification if prediction falls below 70% confidence threshold
       if (conf < 0.70) {
@@ -126,25 +210,39 @@ export function Predict() {
           }
         );
       }
-
-      // Save to local history
-      const history = JSON.parse(localStorage.getItem('predictHistory') || '[]');
-      history.push({
-        timestamp: new Date().toISOString(),
-        result: label,
-        confidence: conf,
-        pRock,
-        pMine,
-        model: res.model || selectedModel,
-        inputs: [...inputs],
-      });
-      localStorage.setItem('predictHistory', JSON.stringify(history));
     } catch (err: any) {
       console.error('Classification error:', err);
       setApiError(err.message || 'Error communicating with Flask prediction API.');
       setResult(null);
     } finally {
       setIsPredicting(false);
+    }
+  };
+
+  const handleSaveToFirestore = async () => {
+    if (!result || !user) return;
+    setIsSavingFirestore(true);
+    setFirestoreSaveError(null);
+
+    try {
+      const docId = await savePredictionToFirestore({
+        predictedClass: result.label === 'ROCK' ? 'Rock' : 'Mine',
+        predictedCode: result.code,
+        selectedModel: result.modelName,
+        confidence: result.hasConfidence ? result.conf : undefined,
+        rockProbability: result.hasRockProbability ? result.pRock : undefined,
+        mineProbability: result.hasMineProbability ? result.pMine : undefined,
+      });
+      setSavedDocId(docId);
+      toast.success(
+        'Saved to Cloud Firestore',
+        `Prediction (${result.label === 'ROCK' ? 'Rock' : 'Mine'}) saved to your personal history.`
+      );
+    } catch (err: unknown) {
+      const parsed = parseFirestoreErrorMessage(err);
+      setFirestoreSaveError(parsed.message);
+    } finally {
+      setIsSavingFirestore(false);
     }
   };
 
@@ -221,10 +319,44 @@ export function Predict() {
           <h1 className="text-2xl font-bold text-white tracking-tight">Predict Signature</h1>
         </header>
 
-        <div className="flex items-center gap-2 text-xs font-medium text-slate-300 bg-black/40 px-3.5 py-1.5 rounded-full border border-white/10">
-          <Server size={14} className="text-green-400" />
-          <span>Flask API:</span>
-          <span className="text-green-400 font-mono text-[11px]">https://echo-guard-api.onrender.com/predict</span>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Sonar Audio Alert Toggle using AudioContext */}
+          <div className="flex items-center gap-1.5 bg-black/40 px-3 py-1.5 rounded-full border border-white/10">
+            <button
+              type="button"
+              onClick={toggleAudio}
+              className={cn(
+                'flex items-center gap-1.5 text-xs font-mono font-medium transition-colors cursor-pointer',
+                audioEnabled ? 'text-emerald-400 hover:text-emerald-300' : 'text-slate-400 hover:text-slate-200'
+              )}
+              title={audioEnabled ? 'Sonar ping audio alert active (plays subtle tone when Mine is detected)' : 'Sonar ping audio alert muted'}
+            >
+              {audioEnabled ? (
+                <Volume2 size={15} className={cn("text-emerald-400", isPinging && "animate-bounce text-cyan-300")} />
+              ) : (
+                <VolumeX size={15} className="text-slate-500" />
+              )}
+              <span>{audioEnabled ? 'Sonar Ping: Armed' : 'Audio: Muted'}</span>
+            </button>
+
+            {audioEnabled && (
+              <button
+                type="button"
+                onClick={handleTestPing}
+                className="ml-1 px-2 py-0.5 rounded-md bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white text-[11px] font-mono transition-colors flex items-center gap-1 cursor-pointer border border-white/10"
+                title="Preview subtle sonar ping via AudioContext"
+              >
+                <Radio size={11} className={cn("text-cyan-400", isPinging && "animate-ping")} />
+                <span>Test</span>
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 text-xs font-medium text-slate-300 bg-black/40 px-3.5 py-1.5 rounded-full border border-white/10">
+            <Server size={14} className="text-green-400" />
+            <span>Flask API:</span>
+            <span className="text-green-400 font-mono text-[11px]">{FLASK_PREDICT_URL}</span>
+          </div>
         </div>
       </div>
 
@@ -315,6 +447,16 @@ export function Predict() {
               </div>
             </div>
 
+            {/* Real-Time Recharts 60-Bin Bar Spectrum Mini-Chart */}
+            <SonarBarSpectrumMiniChart
+              inputs={inputs}
+              isPredicting={isPredicting}
+              predictionLabel={result?.label ?? null}
+              selectedBinIndex={focusedBinIndex}
+              onSelectBin={handleSelectBinFromSpectrum}
+              title="Live 60-Bin Bar Spectrum"
+            />
+
             <button
               onClick={handlePredict}
               disabled={isPredicting}
@@ -323,7 +465,7 @@ export function Predict() {
               {isPredicting ? (
                 <>
                   <RefreshCw size={22} className="animate-spin" />
-                  <span>Connecting to Flask API...</span>
+                  <span>Scanning 60-Bin Spectrum...</span>
                 </>
               ) : (
                 <>
@@ -332,6 +474,23 @@ export function Predict() {
                 </>
               )}
             </button>
+
+            {/* AudioContext Sonar Feedback Status */}
+            <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 px-1 pt-1 border-t border-white/5">
+              <span className="flex items-center gap-1.5">
+                <Volume2 size={13} className={audioEnabled ? "text-emerald-400" : "text-slate-500"} />
+                <span>Sonar Audio: {audioEnabled ? 'Armed (Ping on Mine)' : 'Muted'}</span>
+              </span>
+              <button
+                type="button"
+                onClick={handleTestPing}
+                className="text-cyan-400 hover:text-cyan-200 transition-colors cursor-pointer flex items-center gap-1"
+                title="Preview subtle sonar ping sound"
+              >
+                <Radio size={11} className={cn("text-cyan-400", isPinging && "animate-ping")} />
+                <span>Test Ping</span>
+              </button>
+            </div>
           </div>
 
           {result && (() => {
@@ -340,9 +499,6 @@ export function Predict() {
             const pMinePct = (result.pMine * 100).toFixed(1);
             const pRockPct = (result.pRock * 100).toFixed(1);
             const margin = Math.abs(result.pMine - result.pRock) * 100;
-            const meanIntensity = inputs.reduce((a, b) => a + b, 0) / 60;
-            const maxVal = Math.max(...inputs);
-            const peakBin = inputs.indexOf(maxVal) + 1;
             const isLowConfidence = result.conf < 0.70;
 
             return (
@@ -393,16 +549,48 @@ export function Predict() {
                   
                   <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest pt-1">Classification Result</h3>
                   
-                  <div
-                    className={cn(
-                      'text-5xl font-black tracking-tight bg-clip-text text-transparent flex items-center justify-center gap-2',
-                      result.label === 'ROCK'
-                        ? 'bg-gradient-to-r from-green-400 to-emerald-200'
-                        : 'bg-gradient-to-r from-cyan-400 to-rose-400'
+                  <div className="relative inline-flex items-center justify-center">
+                    <div
+                      className={cn(
+                        'text-5xl font-black tracking-tight bg-clip-text text-transparent flex items-center justify-center gap-2 relative z-10',
+                        result.label === 'ROCK'
+                          ? 'bg-gradient-to-r from-green-400 to-emerald-200'
+                          : 'bg-gradient-to-r from-cyan-400 to-rose-400'
+                      )}
+                    >
+                      {result.label}
+                    </div>
+                    {result.label === 'MINE' && isPinging && (
+                      <span className="absolute -inset-4 rounded-3xl border-2 border-rose-400/60 animate-ping pointer-events-none" />
                     )}
-                  >
-                    {result.label}
                   </div>
+
+                  {/* Mine Sonar Acoustic Ping Notification */}
+                  {result.label === 'MINE' && (
+                    <div className="pt-1 flex items-center justify-center">
+                      <div className={cn(
+                        'inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-mono font-medium border transition-all',
+                        audioEnabled 
+                          ? 'bg-rose-500/10 text-rose-300 border-rose-500/30' 
+                          : 'bg-slate-800 text-slate-400 border-slate-700'
+                      )}>
+                        <Radio size={13} className={cn(audioEnabled ? "text-rose-400" : "text-slate-500", (isPinging || audioEnabled) && "animate-pulse")} />
+                        <span>
+                          {audioEnabled ? 'Acoustic Sonar Ping Emitted (~1.05 kHz)' : 'Audio Muted — Unmute in header'}
+                        </span>
+                        {audioEnabled && (
+                          <button
+                            type="button"
+                            onClick={handleTestPing}
+                            className="text-[11px] text-cyan-300 hover:text-cyan-100 underline cursor-pointer ml-1"
+                            title="Replay subtle ping tone"
+                          >
+                            Replay
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Certainty Tier Badge & Low Confidence Warning State */}
                   <div className="pt-1 flex flex-col items-center gap-1.5">
@@ -420,6 +608,24 @@ export function Predict() {
                   </div>
                 </div>
 
+                {/* 3D Prediction Result Scene (Rock vs. Mine Composite 3D Assembly) */}
+                <PredictionResult3D
+                  label={result.label}
+                  confidence={result.conf}
+                  modelName={getModelLabel(result.modelName)}
+                  heightClass="h-[310px]"
+                />
+
+                {/* Radial Progress Dial for Classification Probability & Thresholds */}
+                <RadialConfidenceDial
+                  confidence={result.conf}
+                  label={result.label}
+                  pRock={result.pRock}
+                  pMine={result.pMine}
+                  modelName={getModelLabel(result.modelName)}
+                  isPredicting={isPredicting}
+                />
+
                 {/* Primary Confidence Score & Probability Card */}
                 <div className={cn(
                   'p-4 rounded-2xl border space-y-3 transition-colors',
@@ -430,7 +636,7 @@ export function Predict() {
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
                       <Percent size={14} className={isLowConfidence ? 'text-amber-400' : 'text-green-400'} />
-                      Model Certainty
+                      Linear Confidence Bar
                     </span>
                     <div className="flex items-center gap-2">
                       {isLowConfidence && (
@@ -449,13 +655,13 @@ export function Predict() {
                   <div className="space-y-1.5">
                     <div className="flex items-baseline justify-between">
                       <span className={cn(
-                        'text-3xl font-black tracking-tight font-mono',
+                        'text-2xl font-black tracking-tight font-mono tabular-nums',
                         isLowConfidence ? 'text-amber-400' : 'text-white'
                       )}>
                         {(result.conf * 100).toFixed(1)}%
                       </span>
                       <span className="text-xs text-slate-400 font-medium">
-                        Certainty Margin: <span className="text-white font-mono">+{margin.toFixed(1)}%</span>
+                        Certainty Margin: <span className="text-white font-mono tabular-nums">+{margin.toFixed(1)}%</span>
                       </span>
                     </div>
 
@@ -537,42 +743,109 @@ export function Predict() {
                   </div>
                 </div>
 
-                {/* Acoustic Signal Fingerprint Preview */}
-                <div className="p-3 rounded-2xl bg-black/40 border border-white/5 space-y-2">
-                  <div className="flex items-center justify-between text-[11px] text-slate-400">
-                    <span className="flex items-center gap-1 text-slate-300 font-medium">
-                      <Activity size={13} className="text-cyan-400" />
-                      Signal Fingerprint (60 Bins)
+                {/* Acoustic Signal Fingerprint Preview (Recharts 60-Bin Bar Spectrum) */}
+                <SonarBarSpectrumMiniChart
+                  inputs={inputs}
+                  isPredicting={isPredicting}
+                  predictionLabel={result.label}
+                  selectedBinIndex={focusedBinIndex}
+                  onSelectBin={handleSelectBinFromSpectrum}
+                  compact
+                  title={`Classified Signal Fingerprint (${result.label})`}
+                />
+
+                {/* Cloud Firestore Personal Prediction History Save Panel */}
+                <div className="p-4 rounded-2xl bg-black/60 border border-green-500/25 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-green-400 flex items-center gap-1.5">
+                      <Database size={14} className="text-green-400" />
+                      Cloud Firestore History
                     </span>
-                    <span className="font-mono text-[10px] text-slate-400">
-                      Peak: <strong className="text-white">F{peakBin}</strong> ({maxVal.toFixed(3)})
+                    <span className="text-[10px] font-mono text-slate-400 bg-white/5 px-2 py-0.5 rounded border border-white/10">
+                      {user ? 'Authenticated' : 'Sign-In Required'}
                     </span>
                   </div>
 
-                  {/* Mini spectral bar sparkline */}
-                  <div className="flex items-end gap-[1px] h-8 bg-slate-900/80 p-1 rounded-lg border border-white/5">
-                    {inputs.map((v, i) => {
-                      const h = Math.max(10, Math.min(100, Math.round(v * 100)));
-                      return (
-                        <div
-                          key={i}
-                          title={`F${i+1}: ${v.toFixed(4)}`}
-                          className={cn(
-                            'flex-1 rounded-t-[1px] transition-all',
-                            result.label === 'MINE'
-                              ? 'bg-cyan-400/70 hover:bg-cyan-300'
-                              : 'bg-emerald-400/70 hover:bg-emerald-300'
-                          )}
-                          style={{ height: `${h}%` }}
-                        />
-                      );
-                    })}
-                  </div>
-                  <div className="flex justify-between text-[9px] text-slate-500 font-mono">
-                    <span>F1 (Low Freq)</span>
-                    <span>Mean Intensity: {(meanIntensity * 100).toFixed(1)}%</span>
-                    <span>F60 (High Freq)</span>
-                  </div>
+                  {!isFirebaseConfigured ? (
+                    <div className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 font-mono">
+                      Firebase Cloud Firestore is not configured in this environment. Check{' '}
+                      <code>firebase-applet-config.json</code>.
+                    </div>
+                  ) : !user ? (
+                    <div className="space-y-2.5">
+                      <p className="text-xs text-slate-300 leading-relaxed">
+                        Sign in with your Echo-Guard account to save this verified prediction result to your personal Cloud Firestore history.
+                      </p>
+                      <Link
+                        to="/login"
+                        className="w-full py-2.5 px-4 bg-green-500/15 hover:bg-green-500/25 text-green-300 border border-green-500/40 rounded-full text-xs font-bold flex items-center justify-center gap-2 transition-colors"
+                      >
+                        <Lock size={14} />
+                        Sign In to Save Prediction History
+                      </Link>
+                    </div>
+                  ) : savedDocId ? (
+                    <div className="space-y-2.5 animate-in fade-in duration-200">
+                      <div className="flex items-start gap-2 text-xs text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3">
+                        <CheckCircle2 size={16} className="text-emerald-400 shrink-0 mt-0.5" />
+                        <div className="space-y-1">
+                          <p className="font-semibold text-emerald-200">
+                            Saved to Cloud Firestore
+                          </p>
+                          <p className="text-[11px] font-mono text-slate-400 break-all">
+                            Doc ID: <span className="text-emerald-300">{savedDocId}</span>
+                          </p>
+                        </div>
+                      </div>
+                      <Link
+                        to="/history"
+                        className="w-full py-2 px-4 bg-white/5 hover:bg-white/10 text-green-300 border border-green-500/30 rounded-full text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
+                      >
+                        <HistoryIcon size={14} />
+                        View in Prediction History
+                      </Link>
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
+                      <p className="text-[11px] text-slate-400 leading-relaxed">
+                        Save this verified <code className="text-green-400">/predict</code> result (
+                        <strong className="text-white">{result.label === 'ROCK' ? 'Rock' : 'Mine'}</strong>,{' '}
+                        <code className="text-cyan-300">{result.modelName}</code>
+                        {result.hasConfidence ? `, ${(result.conf * 100).toFixed(1)}% confidence` : ''}) to your personal Firestore collection.
+                      </p>
+
+                      {firestoreSaveError && (
+                        <div className="text-xs text-red-200 bg-red-500/10 border border-red-500/30 rounded-xl p-3 space-y-1">
+                          <div className="font-semibold text-red-300 flex items-center gap-1.5">
+                            <AlertCircle size={14} />
+                            <span>Failed to Save to Firestore</span>
+                          </div>
+                          <p className="text-[11px] font-mono text-red-200/90 break-words">
+                            {firestoreSaveError}
+                          </p>
+                        </div>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={handleSaveToFirestore}
+                        disabled={isSavingFirestore}
+                        className="w-full py-2.5 px-4 bg-green-500/20 hover:bg-green-500/30 disabled:opacity-50 text-green-300 border border-green-400/40 rounded-full font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-[0_0_12px_rgba(74,222,128,0.15)]"
+                      >
+                        {isSavingFirestore ? (
+                          <>
+                            <RefreshCw size={14} className="animate-spin text-green-400" />
+                            <span>Saving to Cloud Firestore...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Database size={14} className="text-green-400" />
+                            <span>Save Prediction to Cloud History</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* PDF Export with confidence details */}
@@ -590,40 +863,94 @@ export function Predict() {
               </div>
             );
           })()}
+          {!result && (
+            <PredictionResult3D
+              label={null}
+              modelName={getModelLabel(selectedModel)}
+              heightClass="h-[290px]"
+            />
+          )}
         </div>
 
-        {/* 60 Inputs Grid */}
-        <div className="lg:col-span-2 bg-black/40 backdrop-blur-md p-6 rounded-3xl border border-white/10 hover:border-green-400/50 transition-colors">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-              <span className="w-2 h-2 bg-green-400"></span>Frequency Signatures (60 inputs)
-            </h3>
-            <button
-              onClick={() => {
-                setInputs(new Array(60).fill(0));
-                setResult(null);
-                setApiError(null);
-              }}
-              className="text-xs text-slate-400 hover:text-white transition-colors underline cursor-pointer"
-            >
-              Reset to 0
-            </button>
-          </div>
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3 max-h-[60vh] overflow-y-auto p-1">
-            {inputs.map((val, idx) => (
-              <div key={idx} className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 block text-center uppercase tracking-wider">
-                  F{idx + 1}
-                </label>
-                <input
-                  type="number"
-                  step="0.0001"
-                  value={val}
-                  onChange={(e) => handleInputChange(idx, e.target.value)}
-                  className="w-full bg-black/50 border-b border-white/10 border-x-transparent border-t-transparent rounded-t p-1.5 text-xs text-center text-white focus:border-green-400 focus:ring-0 focus:outline-none tabular-nums transition-colors"
-                />
-              </div>
-            ))}
+        {/* 60 Inputs Column with 3D Signal Feature Visualization & Dynamic Canvas Waveform Visualizer */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Interactive 3D 60-Bin Signal Feature Visualization */}
+          <SignalFeature3D
+            features={inputs}
+            selectedBinIndex={focusedBinIndex}
+            onSelectBin={handleSelectBinFromSpectrum}
+            sourceLabel="Live 60-Bin Prediction Input Vector"
+            classLabel={result ? `${result.label} (${(result.conf * 100).toFixed(1)}%)` : undefined}
+            heightClass="h-[360px] sm:h-[390px]"
+          />
+
+          {/* Dynamic 60-Bin Sonar Acoustic Waveform Component */}
+          <SonarWaveChart
+            features={inputs}
+            onFeaturesChange={(updated) => {
+              setInputs(updated);
+              setResult(null);
+              setApiError(null);
+            }}
+            predictedLabel={result?.label}
+            confidence={result?.conf}
+          />
+
+          {/* 60 Inputs Grid */}
+          <div className="bg-black/40 backdrop-blur-md p-6 rounded-3xl border border-white/10 hover:border-green-400/50 transition-colors">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                <span className="w-2 h-2 bg-green-400"></span>Frequency Signatures (60 inputs)
+              </h3>
+              <button
+                onClick={() => {
+                  setInputs(new Array(60).fill(0));
+                  setResult(null);
+                  setApiError(null);
+                }}
+                className="text-xs text-slate-400 hover:text-white transition-colors underline cursor-pointer"
+              >
+                Reset to 0
+              </button>
+            </div>
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3 max-h-[45vh] overflow-y-auto p-1">
+              {inputs.map((val, idx) => {
+                const isSelected = focusedBinIndex === idx;
+                return (
+                  <div
+                    key={idx}
+                    className={cn(
+                      'space-y-1 p-1 rounded-lg transition-colors',
+                      isSelected && 'bg-amber-500/15 ring-1 ring-amber-400/60'
+                    )}
+                  >
+                    <label
+                      htmlFor={`sonar-bin-input-${idx}`}
+                      className={cn(
+                        'text-[10px] font-bold block text-center uppercase tracking-wider',
+                        isSelected ? 'text-amber-300' : 'text-slate-400'
+                      )}
+                    >
+                      F{idx + 1}
+                    </label>
+                    <input
+                      id={`sonar-bin-input-${idx}`}
+                      type="number"
+                      step="0.0001"
+                      value={val}
+                      onFocus={() => setFocusedBinIndex(idx)}
+                      onChange={(e) => handleInputChange(idx, e.target.value)}
+                      className={cn(
+                        'w-full bg-black/50 border-b border-x-transparent border-t-transparent rounded-t p-1.5 text-xs text-center text-white focus:ring-0 focus:outline-none tabular-nums transition-colors',
+                        isSelected
+                          ? 'border-amber-400 text-amber-200 font-semibold'
+                          : 'border-white/10 focus:border-green-400'
+                      )}
+                    />
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>

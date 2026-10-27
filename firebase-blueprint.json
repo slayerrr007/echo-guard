@@ -1,0 +1,56 @@
+{
+  "entities": {
+    "PredictionRecord": {
+      "title": "PredictionRecord",
+      "description": "A personal sonar classification prediction record saved by an authenticated user from a verified Flask /predict API response.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The authenticated Firebase Auth UID of the record owner."
+        },
+        "predictedClass": {
+          "type": "string",
+          "enum": ["Rock", "Mine"],
+          "description": "The human-readable predicted sonar class ('Rock' or 'Mine')."
+        },
+        "predictedCode": {
+          "type": "string",
+          "enum": ["R", "M"],
+          "description": "The single-letter sonar class code ('R' or 'M') returned by the Flask /predict endpoint."
+        },
+        "selectedModel": {
+          "type": "string",
+          "enum": ["knn", "logistic_regression", "random_forest"],
+          "description": "The machine learning model identifier used for inference."
+        },
+        "confidence": {
+          "type": "number",
+          "description": "Optional classification confidence in [0, 1], stored only if returned by the Flask backend."
+        },
+        "rockProbability": {
+          "type": "number",
+          "description": "Optional probability for Rock in [0, 1], stored only if returned by the Flask backend."
+        },
+        "mineProbability": {
+          "type": "number",
+          "description": "Optional probability for Mine in [0, 1], stored only if returned by the Flask backend."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Firestore server timestamp when the prediction record was saved."
+        }
+      },
+      "required": ["userId", "predictedClass", "predictedCode", "selectedModel", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/prediction_history/{predictionId}": {
+      "schema": {
+        "$ref": "#/entities/PredictionRecord"
+      },
+      "description": "Stores personal sonar classification history records scoped strictly to each authenticated user."
+    }
+  }
+}

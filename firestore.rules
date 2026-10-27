@@ -1,0 +1,81 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: prediction_history
+    // Document ID: auto-generated Firestore document ID
+    // Fields:
+    //   - userId: string (required, immutable) — Firebase Auth UID of the owner
+    //   - predictedClass: string (required, immutable) — 'Rock' or 'Mine'
+    //   - predictedCode: string (required, immutable) — 'R' or 'M'
+    //   - selectedModel: string (required, immutable) — 'knn' | 'logistic_regression' | 'random_forest'
+    //   - createdAt: timestamp (required, immutable) — Firestore server timestamp (request.time)
+    //   - confidence: number (optional, immutable) — float in [0.0, 1.0] if returned by backend
+    //   - rockProbability: number (optional, immutable) — float in [0.0, 1.0] if returned by backend
+    //   - mineProbability: number (optional, immutable) — float in [0.0, 1.0] if returned by backend
+    //
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isValidProbability(val) {
+      return (val is int || val is float) && val >= 0 && val <= 1;
+    }
+
+    function isValidPredictionRecord(data) {
+      let requiredFields = ['userId', 'predictedClass', 'predictedCode', 'selectedModel', 'createdAt'];
+      let allowedFields = [
+        'userId',
+        'predictedClass',
+        'predictedCode',
+        'selectedModel',
+        'createdAt',
+        'confidence',
+        'rockProbability',
+        'mineProbability'
+      ];
+
+      return data.keys().hasAll(requiredFields) &&
+             data.keys().hasOnly(allowedFields) &&
+             data.userId is string &&
+             data.userId == request.auth.uid &&
+             data.userId.size() > 0 &&
+             data.userId.size() <= 128 &&
+             data.predictedClass in ['Rock', 'Mine'] &&
+             data.predictedCode in ['R', 'M'] &&
+             ((data.predictedClass == 'Rock' && data.predictedCode == 'R') ||
+              (data.predictedClass == 'Mine' && data.predictedCode == 'M')) &&
+             data.selectedModel in ['knn', 'logistic_regression', 'random_forest'] &&
+             data.createdAt is timestamp &&
+             (!('confidence' in data) || isValidProbability(data.confidence)) &&
+             (!('rockProbability' in data) || isValidProbability(data.rockProbability)) &&
+             (!('mineProbability' in data) || isValidProbability(data.mineProbability));
+    }
+
+    match /prediction_history/{predictionId} {
+      // Users may only read their own prediction history records
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+
+      // Users may only create records for their own UID with valid schema and types
+      allow create: if isAuthenticated() && isValidPredictionRecord(request.resource.data);
+
+      // Prediction history records are immutable audit logs (no in-place edits)
+      allow update: if false;
+
+      // Users may only delete their own prediction history records
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
+    }
+
+    // Deny all other collections by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

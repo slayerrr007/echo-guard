@@ -26,9 +26,13 @@ import {
 } from 'lucide-react';
 import { HyperparameterModal, ModelKey } from '../components/modals/HyperparameterModal';
 import { ModelSparkline, SparklinePoint } from '../components/charts/ModelSparkline';
+import { ModelAccuracyComparisonChart, ModelAccuracyDataPoint } from '../components/charts/ModelAccuracyComparisonChart';
+import { LiveModelLatencyMonitor } from '../components/charts/LiveModelLatencyMonitor';
 import { useToast } from '../components/ui/ToastContext';
 import { cn } from '../lib/utils';
 import { generateModelsDocumentationPDF } from '../lib/pdf';
+import { evaluateModels, trainModel } from '../services/api';
+import { SonarRadar3D } from '../components/three/SonarRadar3D';
 
 export const RECALIBRATION_THRESHOLD = 80.0;
 
@@ -38,126 +42,227 @@ export function Home() {
   const [activeModalModel, setActiveModalModel] = useState<ModelKey | null>(null);
   const [modelStatuses, setModelStatuses] = useState<Record<ModelKey, { status: string; accuracy: string; badgeColor: string }>>({
     logistic_regression: { 
-      status: 'Ready', 
-      accuracy: '84.6%', 
-      badgeColor: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' 
+      status: 'Loading...', 
+      accuracy: '...', 
+      badgeColor: 'bg-slate-800 text-slate-400 border-slate-700' 
     },
     random_forest: { 
-      status: 'Optimized', 
-      accuracy: '91.4%', 
-      badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-[0_0_10px_rgba(52,211,153,0.25)]' 
+      status: 'Loading...', 
+      accuracy: '...', 
+      badgeColor: 'bg-slate-800 text-slate-400 border-slate-700' 
     },
     knn: { 
-      status: 'Ready', 
-      accuracy: '86.5%', 
-      badgeColor: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' 
+      status: 'Loading...', 
+      accuracy: '...', 
+      badgeColor: 'bg-slate-800 text-slate-400 border-slate-700' 
     },
   });
 
   const [sparklineData, setSparklineData] = useState<Record<ModelKey, SparklinePoint[]>>({
-    logistic_regression: [
-      { iteration: 1, label: 'Iter 1', accuracy: 78.5, accFormatted: '78.5%' },
-      { iteration: 2, label: 'Iter 2', accuracy: 80.9, accFormatted: '80.9%' },
-      { iteration: 3, label: 'Iter 3', accuracy: 82.1, accFormatted: '82.1%' },
-      { iteration: 4, label: 'Iter 4', accuracy: 83.3, accFormatted: '83.3%' },
-      { iteration: 5, label: 'Iter 5', accuracy: 84.6, accFormatted: '84.6%' }
-    ],
-    random_forest: [
-      { iteration: 1, label: 'Iter 1', accuracy: 85.7, accFormatted: '85.7%' },
-      { iteration: 2, label: 'Iter 2', accuracy: 88.1, accFormatted: '88.1%' },
-      { iteration: 3, label: 'Iter 3', accuracy: 89.3, accFormatted: '89.3%' },
-      { iteration: 4, label: 'Iter 4', accuracy: 90.5, accFormatted: '90.5%' },
-      { iteration: 5, label: 'Iter 5', accuracy: 91.4, accFormatted: '91.4%' }
-    ],
-    knn: [
-      { iteration: 1, label: 'Iter 1', accuracy: 81.0, accFormatted: '81.0%' },
-      { iteration: 2, label: 'Iter 2', accuracy: 83.3, accFormatted: '83.3%' },
-      { iteration: 3, label: 'Iter 3', accuracy: 84.5, accFormatted: '84.5%' },
-      { iteration: 4, label: 'Iter 4', accuracy: 85.7, accFormatted: '85.7%' },
-      { iteration: 5, label: 'Iter 5', accuracy: 86.5, accFormatted: '86.5%' }
-    ]
+    logistic_regression: [],
+    random_forest: [],
+    knn: []
   });
+
+  const [backendMetrics, setBackendMetrics] = useState<Record<string, any> | null>(null);
+
+  const homeAccuracyData = React.useMemo<ModelAccuracyDataPoint[]>(() => {
+    const parseAcc = (str: string, fallback: number) => {
+      const val = parseFloat(str.replace('%', ''));
+      return isNaN(val) ? fallback : val;
+    };
+
+    return [
+      {
+        id: 'lr',
+        name: 'Logistic Regression',
+        shortName: 'LogReg',
+        accuracy: parseAcc(modelStatuses.logistic_regression.accuracy, 83.3),
+        color: '#4ade80',
+        category: 'Linear / Probabilistic',
+        isBaseline: true,
+        status: modelStatuses.logistic_regression.status,
+      },
+      {
+        id: 'rf',
+        name: 'Random Forest',
+        shortName: 'Random Forest',
+        accuracy: parseAcc(modelStatuses.random_forest.accuracy, 88.1),
+        color: '#c084fc',
+        category: 'Ensemble Trees',
+        isBaseline: false,
+        status: modelStatuses.random_forest.status,
+      },
+      {
+        id: 'knn',
+        name: 'K-Nearest Neighbors',
+        shortName: 'KNN',
+        accuracy: parseAcc(modelStatuses.knn.accuracy, 85.7),
+        color: '#22d3ee',
+        category: 'Instance-Based',
+        isBaseline: false,
+        status: modelStatuses.knn.status,
+      },
+    ];
+  }, [modelStatuses]);
+
+  React.useEffect(() => {
+    evaluateModels()
+      .then((res) => {
+        if (res && res.models) {
+          setBackendMetrics(res.models);
+          setModelStatuses((prev) => {
+            const next = { ...prev };
+            (['logistic_regression', 'random_forest', 'knn'] as ModelKey[]).forEach((key) => {
+              const m = res.models[key];
+              if (m && typeof m.accuracy === 'number') {
+                const accPct = parseFloat((m.accuracy * 100).toFixed(1));
+                const isBelow = accPct < RECALIBRATION_THRESHOLD;
+                next[key] = {
+                  status: isBelow ? 'Re-Calibration Required' : (key === 'random_forest' ? 'Optimized' : 'Ready'),
+                  accuracy: `${accPct}%`,
+                  badgeColor: isBelow 
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-[0_0_12px_rgba(245,158,11,0.3)]'
+                    : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-[0_0_10px_rgba(52,211,153,0.25)]'
+                };
+              }
+            });
+            return next;
+          });
+
+          // Populate sparklines with actual baseline accuracy point
+          setSparklineData(() => {
+            const result: Record<ModelKey, SparklinePoint[]> = {
+              logistic_regression: [],
+              random_forest: [],
+              knn: []
+            };
+            (['logistic_regression', 'random_forest', 'knn'] as ModelKey[]).forEach((key) => {
+              const m = res.models[key];
+              if (m && typeof m.accuracy === 'number') {
+                const accPct = parseFloat((m.accuracy * 100).toFixed(1));
+                result[key] = [
+                  { iteration: 1, label: 'Baseline', accuracy: accPct, accFormatted: `${accPct}%` }
+                ];
+              }
+            });
+            return result;
+          });
+        }
+      })
+      .catch((err) => {
+        console.warn('Home live model evaluation note:', err);
+      });
+  }, []);
 
   const handleOpenHyperparameters = (modelKey: ModelKey) => {
     setActiveModalModel(modelKey);
     setModalOpen(true);
   };
 
-  const handleSimulateHyperparameterDegradation = (modelKey: ModelKey) => {
-    // Simulated degraded accuracy values strictly below 80% threshold
-    const degradedAccuracyMap: Record<ModelKey, number> = {
-      logistic_regression: 76.2, // severe regularizer penalty mismatch
-      random_forest: 78.5,       // single pruned decision stump
-      knn: 74.8                  // K=21 over-smoothed neighborhood
+  const handleSimulateHyperparameterDegradation = async (modelKey: ModelKey) => {
+    // Train the model on the Flask backend with sub-optimal parameters that produce <80% accuracy
+    const degradedParamsMap: Record<ModelKey, Record<string, any>> = {
+      logistic_regression: { C: 0.001, max_iter: 10 },
+      random_forest: { n_estimators: 2, max_depth: 1 },
+      knn: { n_neighbors: 21, weights: 'uniform' }
     };
-    const degradedAcc = degradedAccuracyMap[modelKey];
-
-    setModelStatuses((prev) => ({
-      ...prev,
-      [modelKey]: {
-        status: 'Re-Calibration Required',
-        accuracy: `${degradedAcc}%`,
-        badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-[0_0_12px_rgba(245,158,11,0.3)]'
-      }
-    }));
-
-    setSparklineData((prev) => {
-      const current = prev[modelKey];
-      const updated = [
-        ...current.slice(0, 4),
-        {
-          iteration: 5,
-          label: 'Iter 5 (Degraded)',
-          accuracy: degradedAcc,
-          accFormatted: `${degradedAcc}%`
-        }
-      ];
-      return { ...prev, [modelKey]: updated };
-    });
 
     const modelTitle = modelKey === 'logistic_regression' ? 'Logistic Regression' : modelKey === 'random_forest' ? 'Random Forest' : 'K-Nearest Neighbors';
-    toast.warning(
-      'Re-Calibration Required',
-      `Simulated parameter drift for ${modelTitle}: accuracy dropped to ${degradedAcc}% (< ${RECALIBRATION_THRESHOLD}% threshold). Warning banner activated.`
-    );
+    toast.info('Degrading Model via Flask', `Training ${modelTitle} with sub-optimal parameters on Flask backend...`);
+
+    try {
+      const res = await trainModel(modelKey, degradedParamsMap[modelKey]);
+      const metrics = res.results?.[modelKey];
+      if (!metrics) throw new Error('No metrics returned from backend training.');
+
+      const degradedAcc = parseFloat((metrics.accuracy * 100).toFixed(1));
+      const isBelow = degradedAcc < RECALIBRATION_THRESHOLD;
+
+      setModelStatuses((prev) => ({
+        ...prev,
+        [modelKey]: {
+          status: isBelow ? 'Re-Calibration Required' : 'Degraded',
+          accuracy: `${degradedAcc}%`,
+          badgeColor: isBelow 
+            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-[0_0_12px_rgba(245,158,11,0.3)]'
+            : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+        }
+      }));
+
+      setSparklineData((prev) => {
+        const current = prev[modelKey];
+        const updated = [
+          ...current.slice(1),
+          {
+            iteration: 5,
+            label: 'Iter 5 (Degraded)',
+            accuracy: degradedAcc,
+            accFormatted: `${degradedAcc}%`
+          }
+        ];
+        return { ...prev, [modelKey]: updated };
+      });
+
+      toast.warning(
+        'Re-Calibration Required',
+        `Real parameter drift executed for ${modelTitle}: scikit-learn test accuracy dropped to ${degradedAcc}%. Warning banner activated.`
+      );
+    } catch (err: any) {
+      console.error('Failed to simulate degradation via Flask:', err);
+      toast.error('Degradation Simulation Failed', err.message || 'Flask backend error');
+    }
   };
 
-  const handleAutoRecalibrate = (modelKey: ModelKey) => {
-    const optimalAccuracyMap: Record<ModelKey, number> = {
-      logistic_regression: 84.6,
-      random_forest: 91.4,
-      knn: 86.5
+  const handleAutoRecalibrate = async (modelKey: ModelKey) => {
+    // Retrain model with optimal production hyperparameters on the Flask backend
+    const optimalParamsMap: Record<ModelKey, Record<string, any>> = {
+      logistic_regression: { C: 1.0, max_iter: 1000 },
+      random_forest: { n_estimators: 100, max_depth: null },
+      knn: { n_neighbors: 3, weights: 'uniform' }
     };
-    const restoredAcc = optimalAccuracyMap[modelKey];
-
-    setModelStatuses((prev) => ({
-      ...prev,
-      [modelKey]: {
-        status: modelKey === 'random_forest' ? 'Optimized' : 'Calibrated',
-        accuracy: `${restoredAcc}%`,
-        badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-[0_0_10px_rgba(52,211,153,0.25)]'
-      }
-    }));
-
-    setSparklineData((prev) => {
-      const current = prev[modelKey];
-      const updated = [
-        ...current.slice(0, 4),
-        {
-          iteration: 5,
-          label: 'Iter 5 (Calibrated)',
-          accuracy: restoredAcc,
-          accFormatted: `${restoredAcc}%`
-        }
-      ];
-      return { ...prev, [modelKey]: updated };
-    });
 
     const modelTitle = modelKey === 'logistic_regression' ? 'Logistic Regression' : modelKey === 'random_forest' ? 'Random Forest' : 'K-Nearest Neighbors';
-    toast.success(
-      'Model Re-Calibrated',
-      `${modelTitle} hyperparameters restored to optimal baseline. Accuracy returned to ${restoredAcc}%.`
-    );
+    toast.info('Re-Calibrating Model via Flask', `Training ${modelTitle} with optimal parameters on Flask backend...`);
+
+    try {
+      const res = await trainModel(modelKey, optimalParamsMap[modelKey]);
+      const metrics = res.results?.[modelKey];
+      if (!metrics) throw new Error('No metrics returned from backend training.');
+
+      const restoredAcc = parseFloat((metrics.accuracy * 100).toFixed(1));
+
+      setModelStatuses((prev) => ({
+        ...prev,
+        [modelKey]: {
+          status: modelKey === 'random_forest' ? 'Optimized' : 'Calibrated',
+          accuracy: `${restoredAcc}%`,
+          badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-[0_0_10px_rgba(52,211,153,0.25)]'
+        }
+      }));
+
+      setSparklineData((prev) => {
+        const current = prev[modelKey];
+        const updated = [
+          ...current.slice(1),
+          {
+            iteration: 5,
+            label: 'Iter 5 (Calibrated)',
+            accuracy: restoredAcc,
+            accFormatted: `${restoredAcc}%`
+          }
+        ];
+        return { ...prev, [modelKey]: updated };
+      });
+
+      toast.success(
+        'Model Re-Calibrated',
+        `${modelTitle} retrained on Flask backend. Real accuracy restored to ${restoredAcc}%.`
+      );
+    } catch (err: any) {
+      console.error('Failed to recalibrate via Flask:', err);
+      toast.error('Re-Calibration Failed', err.message || 'Flask backend error');
+    }
   };
 
   const handleRetrainSuccess = (modelKey: ModelKey, updatedStatus: string, accuracy: number) => {
@@ -186,6 +291,10 @@ export function Home() {
     });
   };
   const handleDownloadStatusReport = () => {
+    const lrBm = backendMetrics?.logistic_regression;
+    const rfBm = backendMetrics?.random_forest;
+    const knnBm = backendMetrics?.knn;
+
     const report = {
       system: "Echo-Guard Sonar Classification Platform",
       reportTitle: "Model Architectures Training Status Report",
@@ -197,9 +306,12 @@ export function Home() {
           id: "logistic_regression",
           name: "Logistic Regression",
           architecture: "Linear / Probabilistic",
-          trainingStatus: "Ready",
+          trainingStatus: modelStatuses.logistic_regression.status,
           statusDescription: "Production Ready. Converged with L2 Ridge regularizer and L-BFGS numerical solver.",
-          accuracy: 0.846,
+          accuracy: lrBm?.accuracy ?? parseFloat(modelStatuses.logistic_regression.accuracy) / 100,
+          precision: lrBm?.precision,
+          recall: lrBm?.recall,
+          f1Score: lrBm?.f1Score || lrBm?.f1_score,
           hyperparameters: {
             penalty: "l2",
             C: 1.0,
@@ -212,9 +324,12 @@ export function Home() {
           id: "random_forest",
           name: "Random Forest Classifier",
           architecture: "Ensemble Decision Trees",
-          trainingStatus: "Optimized",
+          trainingStatus: modelStatuses.random_forest.status,
           statusDescription: "Hyperparameters Tuned & Optimized. Bagged ensemble of 100 decorrelated trees with Gini criterion.",
-          accuracy: 0.914,
+          accuracy: rfBm?.accuracy ?? parseFloat(modelStatuses.random_forest.accuracy) / 100,
+          precision: rfBm?.precision,
+          recall: rfBm?.recall,
+          f1Score: rfBm?.f1Score || rfBm?.f1_score,
           hyperparameters: {
             n_estimators: 100,
             criterion: "gini",
@@ -227,9 +342,12 @@ export function Home() {
           id: "knn",
           name: "K-Nearest Neighbors",
           architecture: "Instance-Based Proximity",
-          trainingStatus: "Calibration Required",
+          trainingStatus: modelStatuses.knn.status,
           statusDescription: "Distance Metric Tuning & Calibration Required. Instance clustering with k=3 Minkowski metric.",
-          accuracy: 0.865,
+          accuracy: knnBm?.accuracy ?? parseFloat(modelStatuses.knn.accuracy) / 100,
+          precision: knnBm?.precision,
+          recall: knnBm?.recall,
+          f1Score: knnBm?.f1Score || knnBm?.f1_score,
           hyperparameters: {
             n_neighbors: 3,
             weights: "uniform",
@@ -255,6 +373,7 @@ export function Home() {
     try {
       generateModelsDocumentationPDF({
         statuses: modelStatuses,
+        backendMetrics: backendMetrics || undefined,
       });
       toast.success(
         'Documentation Generated',
@@ -276,6 +395,18 @@ export function Home() {
         <p className="text-lg md:text-xl text-slate-300 max-w-3xl leading-relaxed">
           An intelligent platform that transforms complex sonar frequencies into clear Rock or Mine predictions.
         </p>
+
+        {/* Interactive 3D Sonar Radar Visualization */}
+        <div className="w-full max-w-5xl pt-4 text-left">
+          <SonarRadar3D
+            activeModelLabel="Random Forest · KNN · Logistic Regression"
+            verifiedAccuracyText={
+              modelStatuses.random_forest.accuracy !== '...'
+                ? `${modelStatuses.random_forest.accuracy} (Random Forest)`
+                : undefined
+            }
+          />
+        </div>
       </section>
 
       {/* Trust Badges */}
@@ -815,6 +946,28 @@ export function Home() {
             );
           })()}
         </div>
+
+        {/* Real-time Side-by-Side Model Accuracy Comparison Bar Chart (Recharts) */}
+        <ModelAccuracyComparisonChart
+          models={homeAccuracyData}
+          title="Side-by-Side Model Accuracy Comparison"
+          subtitle="Real-time Recharts bar visualization comparing Logistic Regression, Random Forest, and KNN accuracies side-by-side. Dynamically reflects hyperparameter calibrations and stress-test drops."
+          threshold={RECALIBRATION_THRESHOLD}
+          onSelectModel={(id) => {
+            const key: ModelKey = id === 'lr' ? 'logistic_regression' : id === 'rf' ? 'random_forest' : 'knn';
+            handleOpenHyperparameters(key);
+          }}
+        />
+
+        {/* Live Inference Latency Sparkline Telemetry Monitor */}
+        <LiveModelLatencyMonitor
+          title="Live Inference Latency Telemetry"
+          subtitle="Simulates and displays real-time classification inference latency in milliseconds for each model with continuous sparkline trend tracking."
+          onSelectModel={(id) => {
+            const key: ModelKey = id === 'logistic_regression' || id === 'lr' ? 'logistic_regression' : id === 'random_forest' || id === 'rf' ? 'random_forest' : 'knn';
+            handleOpenHyperparameters(key);
+          }}
+        />
 
         {/* Hyperparameter Tuning Modal */}
         <HyperparameterModal

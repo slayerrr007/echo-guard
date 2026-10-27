@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Server, RefreshCw, Wifi, WifiOff, CheckCircle2, AlertCircle, ExternalLink } from 'lucide-react';
-import { FLASK_API_BASE } from '../../lib/ml';
+import { getActiveApiBase } from '../../services/api';
+
+const FLASK_API_BASE = '/api';
 
 interface BackendStatusIndicatorProps {
   className?: string;
@@ -20,12 +22,13 @@ export function BackendStatusIndicator({ className = '', compact = false }: Back
 
   const checkHealth = useCallback(async () => {
     setIsRefreshing(true);
-    const healthUrl = `${FLASK_API_BASE}/health`;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000);
     const startTime = performance.now();
 
     try {
+      const activeBase = await getActiveApiBase();
+      const healthUrl = `${activeBase}/health`;
       const response = await fetch(healthUrl, {
         method: 'GET',
         signal: controller.signal,
@@ -164,7 +167,7 @@ export function BackendStatusIndicator({ className = '', compact = false }: Back
             <div className="flex items-center justify-between text-slate-400">
               <span>Endpoint:</span>
               <code className="text-[11px] text-cyan-300 bg-cyan-950/40 px-1.5 py-0.5 rounded border border-cyan-800/40 break-all">
-                https://echo-guard-api.onrender.com/health
+                {FLASK_API_BASE}/health
               </code>
             </div>
 

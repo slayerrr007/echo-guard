@@ -18,7 +18,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useAppContext } from '../../lib/dataContext';
 import { useToast } from '../ui/ToastContext';
-import { KNN, LogisticRegression, RandomForest, calculateMetrics, trainTestSplit } from '../../lib/ml';
+import { trainModel } from '../../services/api';
 
 export type ModelKey = 'logistic_regression' | 'random_forest' | 'knn';
 
@@ -118,131 +118,182 @@ export function HyperparameterModal({
     toast.info('Parameters Reset', 'Reverted hyperparameters to production defaults.');
   };
 
-  const handleSimulateSuboptimal = () => {
+  const handleSimulateSuboptimal = async () => {
+    let degradedParams: Record<string, any> = {};
+
     if (modelKey === 'knn') {
-      setKnnParams({
+      const p = {
         kValue: 21,
         metric: 'manhattan',
         p: 1,
         weights: 'uniform',
         algorithm: 'auto'
-      });
+      };
+      setKnnParams(p);
+      degradedParams = { n_neighbors: 21, metric: 'manhattan', p: 1, weights: 'uniform' };
     } else if (modelKey === 'logistic_regression') {
-      setLrParams({
-        cValue: 0.05,
-        penalty: 'l1',
-        solver: 'saga',
-        maxIter: 200,
+      const p = {
+        cValue: 0.01,
+        penalty: 'l2',
+        solver: 'lbfgs',
+        maxIter: 50,
         learningRate: 0.45
-      });
+      };
+      setLrParams(p);
+      degradedParams = { C: 0.01, penalty: 'l2', solver: 'lbfgs', max_iter: 50 };
     } else if (modelKey === 'random_forest') {
-      setRfParams({
-        nEstimators: 20,
+      const p = {
+        nEstimators: 10,
         criterion: 'entropy',
-        maxFeatures: 'all',
-        minSamplesSplit: 8,
+        maxFeatures: 'sqrt',
+        minSamplesSplit: 15,
         bootstrap: false,
         maxDepth: '1'
-      });
+      };
+      setRfParams(p);
+      degradedParams = { n_estimators: 10, criterion: 'entropy', max_features: 'sqrt', min_samples_split: 15, bootstrap: false, max_depth: 1 };
     }
 
     setIsRetraining(true);
     setRetrainResult(null);
 
-    setTimeout(() => {
-      // Degraded accuracy strictly below 80% threshold
-      const degradedAcc = modelKey === 'knn' ? 0.748 : modelKey === 'logistic_regression' ? 0.762 : 0.785;
+    try {
+      const res = await trainModel(modelKey, degradedParams);
+      const modelMetrics = res.results?.[modelKey];
+
+      if (!modelMetrics) {
+        throw new Error(`Degraded training result for '${modelKey}' was not returned by Flask.`);
+      }
+
+      const acc = modelMetrics.accuracy;
+      const prec = modelMetrics.precision;
+      const rec = modelMetrics.recall;
+      const f1 = modelMetrics.f1Score || modelMetrics.f1_score;
+      const cm = modelMetrics.confusionMatrix || modelMetrics.confusion_matrix;
+
       const evaluatedMetrics = {
-        accuracy: degradedAcc,
-        precision: degradedAcc - 0.03,
-        recall: degradedAcc - 0.02,
-        f1: degradedAcc - 0.025,
-        confusionMatrix: [[15, 6], [7, 14]]
+        accuracy: acc,
+        precision: prec,
+        recall: rec,
+        f1Score: f1,
+        confusionMatrix: cm,
+        model: modelKey
       };
 
       setMetrics(evaluatedMetrics);
-      setIsRetraining(false);
+      setSelectedModel(modelKey);
+      setTrainedModel({ name: modelKey, type: 'scikit-learn' });
+
       setRetrainResult({
-        accuracy: evaluatedMetrics.accuracy,
-        precision: evaluatedMetrics.precision,
-        recall: evaluatedMetrics.recall,
-        f1: evaluatedMetrics.f1,
-        samplesEvaluated: dataset ? dataset.features.length : 208
+        accuracy: acc,
+        precision: prec,
+        recall: rec,
+        f1,
+        samplesEvaluated: res.test_samples || 42
       });
 
-      onRetrainSuccess?.(modelKey, 'Re-Calibration Required', evaluatedMetrics.accuracy);
+      const updatedStatus = acc < 0.80 ? 'Re-Calibration Required' : 'Sub-Optimal Alert';
+      onRetrainSuccess?.(modelKey, updatedStatus, acc);
 
       toast.warning(
         'Re-Calibration Required',
-        `Sub-optimal hyperparameters simulated: accuracy dropped to ${(degradedAcc * 100).toFixed(1)}% (below 80% threshold).`
+        `Sub-optimal hyperparameters evaluated via Flask: accuracy dropped to ${(acc * 100).toFixed(1)}% (below 80% threshold).`
       );
-    }, 600);
+    } catch (err: any) {
+      console.error('Suboptimal parameter evaluation error:', err);
+      toast.error('Simulation Failed', err.message || 'Unable to evaluate sub-optimal parameters via Flask backend.');
+    } finally {
+      setIsRetraining(false);
+    }
   };
 
-  const handleRetrain = () => {
+  const handleRetrain = async () => {
     setIsRetraining(true);
     setRetrainResult(null);
 
-    setTimeout(() => {
-      let evaluatedMetrics;
-      let modelInstance: any;
+    let params: Record<string, any> = {};
+    if (modelKey === 'knn') {
+      params = {
+        n_neighbors: knnParams.kValue,
+        metric: knnParams.metric,
+        p: knnParams.p,
+        weights: knnParams.weights
+      };
+    } else if (modelKey === 'logistic_regression') {
+      params = {
+        C: lrParams.cValue,
+        penalty: lrParams.penalty,
+        solver: lrParams.solver,
+        max_iter: lrParams.maxIter
+      };
+    } else if (modelKey === 'random_forest') {
+      params = {
+        n_estimators: rfParams.nEstimators,
+        criterion: rfParams.criterion,
+        max_features: rfParams.maxFeatures === 'all' ? 'all' : rfParams.maxFeatures,
+        min_samples_split: rfParams.minSamplesSplit,
+        bootstrap: rfParams.bootstrap,
+        max_depth: rfParams.maxDepth !== 'none' ? rfParams.maxDepth : undefined
+      };
+    }
 
-      if (dataset && dataset.features.length > 0) {
-        const { X_train, X_test, y_train, y_test } = trainTestSplit(dataset.features, dataset.labels, 0.2);
+    try {
+      const res = await trainModel(modelKey, params);
+      const modelMetrics = res.results?.[modelKey];
 
-        if (modelKey === 'knn') {
-          modelInstance = new KNN(knnParams.kValue);
-          setSelectedModel('knn');
-        } else if (modelKey === 'logistic_regression') {
-          modelInstance = new LogisticRegression();
-          setSelectedModel('logistic_regression');
-        } else {
-          modelInstance = new RandomForest();
-          setSelectedModel('random_forest');
-        }
-
-        // Fit
-        if (modelKey === 'logistic_regression') {
-          modelInstance.fit(X_train, y_train, 100, lrParams.learningRate);
-        } else {
-          modelInstance.fit(X_train, y_train);
-        }
-
-        const { predictions } = modelInstance.predict(X_test);
-        evaluatedMetrics = calculateMetrics(y_test, predictions);
-        setMetrics(evaluatedMetrics);
-        setTrainedModel(modelInstance);
-      } else {
-        // Fallback realistic metrics if dataset is loading
-        const baseAcc = modelKey === 'random_forest' ? 0.914 : modelKey === 'knn' ? 0.865 : 0.846;
-        const variation = (Math.random() * 0.04 - 0.02);
-        const accuracy = Math.min(0.98, Math.max(0.78, baseAcc + variation));
-        evaluatedMetrics = {
-          accuracy,
-          precision: accuracy - 0.02,
-          recall: accuracy + 0.01,
-          f1: accuracy - 0.005,
-          confusionMatrix: [[18, 3], [3, 18]]
-        };
+      if (!modelMetrics) {
+        throw new Error(`Training result for '${modelKey}' was not returned by the Flask backend.`);
       }
 
-      setIsRetraining(false);
+      const acc = modelMetrics.accuracy;
+      const prec = modelMetrics.precision;
+      const rec = modelMetrics.recall;
+      const f1 = modelMetrics.f1Score || modelMetrics.f1_score;
+      const cm = modelMetrics.confusionMatrix || modelMetrics.confusion_matrix;
+
+      const evaluatedMetrics = {
+        accuracy: acc,
+        precision: prec,
+        recall: rec,
+        f1Score: f1,
+        specificity: modelMetrics.specificity,
+        confusionMatrix: cm,
+        rocAuc: modelMetrics.roc_auc,
+        model: modelKey
+      };
+
+      setMetrics(evaluatedMetrics);
+      setSelectedModel(modelKey);
+      setTrainedModel({ name: modelKey, type: 'scikit-learn' });
+
       setRetrainResult({
-        accuracy: evaluatedMetrics.accuracy,
-        precision: evaluatedMetrics.precision,
-        recall: evaluatedMetrics.recall,
-        f1: evaluatedMetrics.f1,
-        samplesEvaluated: dataset ? dataset.features.length : 208
+        accuracy: acc,
+        precision: prec,
+        recall: rec,
+        f1,
+        samplesEvaluated: res.test_samples || 42
       });
 
-      const updatedStatus = 'Retrained & Optimized';
-      onRetrainSuccess?.(modelKey, updatedStatus, evaluatedMetrics.accuracy);
+      const updatedStatus = acc < 0.80 ? 'Re-Calibration Required' : 'Retrained & Optimized';
+      onRetrainSuccess?.(modelKey, updatedStatus, acc);
 
-      toast.success(
-        'Retraining Complete',
-        `${getModelTitle(modelKey)} retrained successfully with ${(evaluatedMetrics.accuracy * 100).toFixed(1)}% accuracy.`
-      );
-    }, 700);
+      if (acc < 0.80) {
+        toast.warning(
+          'Re-Calibration Required',
+          `${getModelTitle(modelKey)} trained with ${(acc * 100).toFixed(1)}% accuracy (below 80% threshold). Adjust parameters to restore calibration.`
+        );
+      } else {
+        toast.success(
+          'Retraining Complete',
+          `${getModelTitle(modelKey)} retrained successfully via scikit-learn with ${(acc * 100).toFixed(1)}% accuracy.`
+        );
+      }
+    } catch (err: any) {
+      console.error('Retrain error:', err);
+      toast.error('Retraining Failed', err.message || 'Unable to retrain model via Flask backend.');
+    } finally {
+      setIsRetraining(false);
+    }
   };
 
   const getModelTitle = (key: ModelKey) => {
